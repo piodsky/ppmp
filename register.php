@@ -1,9 +1,5 @@
 <?php
-
-if (isset(null)) {
-    header("Location: dashboard.php");
-    exit();
-}
+// Register page - no authentication required for registration
 ?>
 
 <!DOCTYPE html>

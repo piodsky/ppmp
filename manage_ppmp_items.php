@@ -1,11 +1,48 @@
 <?php
+// Manage PPMP Items page - PHP-based authentication like dashboard
+require_once "../apiPPMP/config.php";
+require_once "../apiPPMP/token_helper.php";
 
-if (!isset(null)) {
+TokenHelper::init($conn);
+
+// Check for token in cookie or Authorization header
+$token = null;
+
+// First check for token in cookie (secure method)
+if (isset($_COOKIE['auth_token'])) {
+    $token = $_COOKIE['auth_token'];
+}
+// Fallback to Authorization header
+elseif (isset($_SERVER['HTTP_AUTHORIZATION'])) {
+    if (strpos($_SERVER['HTTP_AUTHORIZATION'], 'Bearer ') === 0) {
+        $token = substr($_SERVER['HTTP_AUTHORIZATION'], 7);
+    }
+}
+
+if (!$token) {
     header("Location: login.php");
     exit();
 }
-session_regenerate_id(true);
-$user = htmlspecialchars(null);
+
+// Validate token
+$validation = TokenHelper::validateToken($token);
+if (!$validation['valid']) {
+    header("Location: login.php");
+    exit();
+}
+
+// Set user data from token validation
+$user_id = $validation['user_id'];
+$username = $validation['username'];
+$firstname = $validation['firstname'];
+$lastname = $validation['lastname'];
+$role = $validation['role'];
+$department = $validation['department'];
+$profile_picture = $validation['profile_picture'] ?? '';
+
+// Set user data for JavaScript
+$user = $username;
+$user_role = $role;
 ?>
 
 <!DOCTYPE html>
