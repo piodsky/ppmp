@@ -576,6 +576,15 @@ function getUserData() {
 }
 
 function getAccessToken() {
+  // First check for token in cookies (secure method)
+  const cookies = document.cookie.split(';');
+  for (let cookie of cookies) {
+    const [name, value] = cookie.trim().split('=');
+    if (name === 'auth_token') {
+      return decodeURIComponent(value);
+    }
+  }
+  // Fallback to localStorage
   return localStorage.getItem('access_token');
 }
 </script>
@@ -738,12 +747,29 @@ function loadItems(page = 1) {
         .then(response => {
             console.log('Load items response status:', response.status);
             console.log('Load items response headers:', response.headers);
+
+            // Check if response is not ok (like 401, 500, etc.)
+            if (!response.ok) {
+                return response.text().then(text => {
+                    console.log('Error response text:', text);
+                    throw new Error(`HTTP ${response.status}: ${text}`);
+                });
+            }
+
             return response.text().then(text => {
                 console.log('Raw response text:', text);
+                console.log('Response text length:', text.length);
+                console.log('Response text is empty?', text.trim() === '');
+
+                if (!text || text.trim() === '') {
+                    throw new Error('Empty response from server');
+                }
+
                 try {
                     return JSON.parse(text);
                 } catch (e) {
                     console.error('JSON parse error:', e);
+                    console.error('Response content type:', response.headers.get('content-type'));
                     throw new Error(`Invalid JSON response: ${text.substring(0, 200)}...`);
                 }
             });

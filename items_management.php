@@ -237,7 +237,7 @@ $user_role = $role;
                 <button class="btn btn-outline-secondary" id="themeToggle" title="Toggle Theme">
                     <i class="fas fa-moon" id="themeIcon"></i>
                 </button>
-                <button class="btn btn-info" onclick="loadItems()">
+                <button class="btn btn-info" id="refreshBtn">
                     <i class="fas fa-sync"></i> Refresh
                 </button>
             </div>
@@ -531,40 +531,19 @@ function getUserData() {
 }
 
 function getAccessToken() {
+  // First check for token in cookies (secure method)
+  const cookies = document.cookie.split(';');
+  for (let cookie of cookies) {
+    const [name, value] = cookie.trim().split('=');
+    if (name === 'auth_token') {
+      return decodeURIComponent(value);
+    }
+  }
+  // Fallback to localStorage
   return localStorage.getItem('access_token');
 }
 
 // Items Management initialization - authentication handled by PHP
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Items Management page loaded successfully');
-
-    // Load items after authentication
-    loadItems();
-});
-</script>
-
-<script>
-// Define API_BASE_URL for this page
-const API_BASE_URL = "<?php echo $_ENV['API_BASE_URL'] ?? '/SystemsMISPYO/PPMP/apiPPMP'; ?>";
-</script>
-
-// Pass user role from PHP to JS
-let USER_ROLE = '<?php echo $user_role; ?>';
-let USERNAME = '<?php echo $user; ?>';
-
-// Function to get current username from token manager
-function getCurrentUsername() {
-    const userData = getUserData();
-    return userData ? userData.username : '';
-}
-
-// Function to get current user role from token manager
-function getCurrentUserRole() {
-    const userData = getUserData();
-    return userData ? userData.role : 'user';
-}
-
-// USERNAME and USER_ROLE are now set in the authentication block
 
 // Utility function to make authenticated API calls
 function authenticatedFetch(url, options = {}) {
@@ -587,6 +566,103 @@ function authenticatedFetch(url, options = {}) {
 let currentDateFilter = 'week';
 let currentApprovedPage = 1;
 let approvedPagination = null;
+
+// Load pending items
+function loadPendingItems() {
+    const tableBody = document.getElementById('pendingItemsTableBody');
+    tableBody.innerHTML = `
+        <tr>
+            <td colspan="10" class="text-center py-4">
+                <i class="fas fa-spinner fa-spin fa-2x"></i>
+                <p class="mt-2">Loading pending items...</p>
+            </td>
+        </tr>
+    `;
+
+    authenticatedFetch(`${API_BASE_URL}/api_get_pending_items.php`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayPendingItems(data.pending_items || []);
+            } else {
+                showError('Failed to load pending items', 'pendingItemsTableBody', 10);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading pending items:', error);
+            showError('Network error loading pending items', 'pendingItemsTableBody', 10);
+        });
+}
+
+// Load approved items
+function loadApprovedItems(page = 1) {
+    currentApprovedPage = page;
+    const tableBody = document.getElementById('approvedItemsTableBody');
+    tableBody.innerHTML = `
+        <tr>
+            <td colspan="9" class="text-center py-4">
+                <i class="fas fa-spinner fa-spin fa-2x"></i>
+                <p class="mt-2">Loading approved items...</p>
+            </td>
+        </tr>
+    `;
+
+    const url = `${API_BASE_URL}/get_items.php?page=${page}&limit=50&date_filter=${currentDateFilter}`;
+
+    authenticatedFetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.items) {
+                approvedPagination = data.pagination;
+                displayApprovedItems(data.items);
+                renderApprovedPagination();
+            } else {
+                showError('Failed to load approved items', 'approvedItemsTableBody', 9);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading approved items:', error);
+            showError('Network error loading approved items', 'approvedItemsTableBody', 9);
+        });
+}
+
+// Load all items from database
+function loadItems() {
+    loadPendingItems();
+    loadApprovedItems(currentApprovedPage);
+}
+
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Items Management page loaded successfully');
+
+    // Load items after authentication
+    loadItems();
+
+    // Add event listener for refresh button
+    document.getElementById('refreshBtn').addEventListener('click', loadItems);
+});
+</script>
+
+// Pass user role from PHP to JS
+let USER_ROLE = '<?php echo $user_role; ?>';
+let USERNAME = '<?php echo $user; ?>';
+
+// Function to get current username from token manager
+function getCurrentUsername() {
+    const userData = getUserData();
+    return userData ? userData.username : '';
+}
+
+// Function to get current user role from token manager
+function getCurrentUserRole() {
+    const userData = getUserData();
+    return userData ? userData.role : 'user';
+}
+
+// USERNAME and USER_ROLE are now set in the authentication block
+
+
 
 // Theme Management
 class ItemsListThemeManager {
@@ -657,70 +733,6 @@ class ItemsListThemeManager {
     }
 }
 
-// Load all items from database
-function loadItems() {
-    loadPendingItems();
-    loadApprovedItems(currentApprovedPage);
-}
-
-// Load pending items
-function loadPendingItems() {
-    const tableBody = document.getElementById('pendingItemsTableBody');
-    tableBody.innerHTML = `
-        <tr>
-            <td colspan="10" class="text-center py-4">
-                <i class="fas fa-spinner fa-spin fa-2x"></i>
-                <p class="mt-2">Loading pending items...</p>
-            </td>
-        </tr>
-    `;
-
-    authenticatedFetch(`${API_BASE_URL}/api_get_pending_items.php`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                displayPendingItems(data.pending_items || []);
-            } else {
-                showError('Failed to load pending items', 'pendingItemsTableBody', 10);
-            }
-        })
-        .catch(error => {
-            console.error('Error loading pending items:', error);
-            showError('Network error loading pending items', 'pendingItemsTableBody', 10);
-        });
-}
-
-// Load approved items
-function loadApprovedItems(page = 1) {
-    currentApprovedPage = page;
-    const tableBody = document.getElementById('approvedItemsTableBody');
-    tableBody.innerHTML = `
-        <tr>
-            <td colspan="9" class="text-center py-4">
-                <i class="fas fa-spinner fa-spin fa-2x"></i>
-                <p class="mt-2">Loading approved items...</p>
-            </td>
-        </tr>
-    `;
-
-    const url = `${API_BASE_URL}/get_items.php?page=${page}&limit=50&date_filter=${currentDateFilter}`;
-
-    authenticatedFetch(url)
-        .then(response => response.json())
-        .then(data => {
-            if (data.items) {
-                approvedPagination = data.pagination;
-                displayApprovedItems(data.items);
-                renderApprovedPagination();
-            } else {
-                showError('Failed to load approved items', 'approvedItemsTableBody', 9);
-            }
-        })
-        .catch(error => {
-            console.error('Error loading approved items:', error);
-            showError('Network error loading approved items', 'approvedItemsTableBody', 9);
-        });
-}
 
 function displayPendingItems(pendingItems) {
     const tableBody = document.getElementById('pendingItemsTableBody');
