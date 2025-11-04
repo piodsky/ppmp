@@ -612,6 +612,95 @@ function getAccessToken() {
 document.addEventListener('DOMContentLoaded', function() {
     console.log('View Database Items page loaded successfully');
 });
+
+// Function to display items
+function displayItems(items, isFiltered = false) {
+  const tableBody = document.getElementById('itemsTableBody');
+
+  if (items.length === 0) {
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="8" class="text-center py-4">
+          <i class="fas fa-database fa-3x text-muted mb-3"></i>
+          <h5 class="text-muted">No items found</h5>
+          <p class="text-muted">No items match your search criteria.</p>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tableBody.innerHTML = '';
+
+  items.forEach((item, index) => {
+    const itemNumber = isFiltered ? index + 1 : (currentPage - 1) * itemsPerPage + index + 1;
+
+    let actions = '';
+    if (userRole === 'admin') {
+      actions = `
+        <button class="btn btn-custom btn-edit me-1" onclick="editItem(${item.ID}, '${item.Item_Code}', '${item.Item_Name}', '${item.Items_Description}', '${item.Unit}', ${item.Unit_Cost}, '${item.Category}')">
+          <i class="fas fa-edit"></i> Edit
+        </button>
+        <button class="btn btn-custom btn-delete" onclick="deleteItem(${item.ID}, '${item.Item_Code}')">
+          <i class="fas fa-trash"></i> Delete
+        </button>
+      `;
+    } else {
+      actions = '<span class="text-muted">No actions</span>';
+    }
+
+    tableBody.innerHTML += `
+      <tr>
+        <td>${itemNumber}</td>
+        <td><span class="item-code">${item.Item_Code}</span></td>
+        <td><span class="item-name">${item.Item_Name || 'N/A'}</span></td>
+        <td>${item.Items_Description}</td>
+        <td>${item.Unit}</td>
+        <td><span class="unit-cost">₱${parseFloat(item.Unit_Cost).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></td>
+        <td>${item.Category || 'N/A'}</td>
+        <td>${actions}</td>
+      </tr>
+    `;
+  });
+}
+
+// Function to update total count
+function updateTotalCount() {
+  const currentTotal = isSearching ? filteredItems.length : totalItems;
+  document.getElementById('totalCount').textContent = currentTotal;
+}
+
+// Function to show error messages
+function showError(message) {
+  const tableBody = document.getElementById('itemsTableBody');
+  tableBody.innerHTML = `
+    <tr>
+      <td colspan="8" class="text-center py-4">
+        <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
+        <h5 class="text-danger">Error</h5>
+        <p class="text-muted">${message}</p>
+      </td>
+    </tr>
+  `;
+}
+
+// Function to show messages
+function showMessage(message, type) {
+  // Create a temporary message container
+  const container = document.createElement('div');
+  container.innerHTML = `
+    <div class="alert alert-${type} alert-dismissible fade show position-fixed" role="alert" style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;">
+      ${message}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  `;
+  document.body.appendChild(container);
+
+  // Auto-hide after 5 seconds
+  setTimeout(() => {
+    container.remove();
+  }, 5000);
+}
 </script>
 
 <script>

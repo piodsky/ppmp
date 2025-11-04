@@ -563,6 +563,167 @@ function authenticatedFetch(url, options = {}) {
   return fetch(url, { ...defaultOptions, ...options });
 }
 
+// Function to display pending items
+function displayPendingItems(pendingItems) {
+  const tableBody = document.getElementById('pendingItemsTableBody');
+
+  if (pendingItems.length === 0) {
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="10" class="text-center py-4">
+          <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+          <h5 class="text-muted">No pending items</h5>
+          <p class="text-muted">No items are waiting for approval.</p>
+        </td>
+      </tr>
+    `;
+    updateSummary(pendingItems.length, null);
+    return;
+  }
+
+  tableBody.innerHTML = '';
+
+  pendingItems.forEach((item, index) => {
+    const formattedDate = new Date(item.created_at).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    let actions = '';
+    if (USER_ROLE === 'admin') {
+      actions = `
+        <button class="btn btn-success btn-sm me-1" onclick="showApprovalModal(${item.id}, 'approve', '${item.item_code}')">
+          <i class="fas fa-check"></i> Approve
+        </button>
+        <button class="btn btn-danger btn-sm" onclick="showApprovalModal(${item.id}, 'reject', '${item.item_code}')">
+          <i class="fas fa-times"></i> Reject
+        </button>
+      `;
+    } else if (item.submitted_by === getCurrentUsername()) {
+      actions = `
+        <button class="btn btn-warning btn-sm me-1" onclick="editPendingItem(${item.id}, '${item.item_code}', '${item.item_name}', '${item.description}', '${item.unit}', ${item.unit_cost}, '${item.category}')">
+          <i class="fas fa-edit"></i> Edit
+        </button>
+        <button class="btn btn-danger btn-sm" onclick="deletePendingItem(${item.id}, '${item.item_code}')">
+          <i class="fas fa-trash"></i> Delete
+        </button>
+      `;
+    } else {
+      actions = '<span class="text-muted">Waiting for admin review</span>';
+    }
+
+    tableBody.innerHTML += `
+      <tr>
+        <td>${index + 1}</td>
+        <td><strong>${item.item_code}</strong></td>
+        <td>${item.item_name || 'N/A'}</td>
+        <td>${item.description}</td>
+        <td>${item.unit}</td>
+        <td>₱${parseFloat(item.unit_cost).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+        <td>${item.category || 'N/A'}</td>
+        <td>${item.submitted_by}</td>
+        <td><small>${formattedDate}</small></td>
+        <td>${actions}</td>
+      </tr>
+    `;
+  });
+
+  updateSummary(pendingItems.length, null);
+}
+
+// Function to display approved items
+function displayApprovedItems(approvedItems) {
+  const tableBody = document.getElementById('approvedItemsTableBody');
+
+  if (approvedItems.length === 0) {
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="9" class="text-center py-4">
+          <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+          <h5 class="text-muted">No approved items</h5>
+          <p class="text-muted">No items have been approved yet.</p>
+        </td>
+      </tr>
+    `;
+    // Update with total count from pagination if available, otherwise 0
+    const totalCount = approvedPagination ? approvedPagination.total_items : 0;
+    updateSummary(null, totalCount);
+    document.getElementById('approvedPaginationContainer').style.display = 'none';
+    return;
+  }
+
+  tableBody.innerHTML = '';
+
+  approvedItems.forEach((item, index) => {
+    const formattedDate = new Date(item.Created_At || item.created_at).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    let actions = '';
+    if (USER_ROLE === 'admin') {
+      actions = `
+        <button class="btn btn-warning btn-sm me-1" onclick="editItem(${item.ID}, '${item.Item_Code}', '${item.Item_Name}', '${item.Items_Description}', '${item.Unit}', ${item.Unit_Cost}, '${item.Category}')">
+          <i class="fas fa-edit"></i> Edit
+        </button>
+        <button class="btn btn-danger btn-sm" onclick="deleteItem(${item.ID}, '${item.Item_Code}')">
+          <i class="fas fa-trash"></i> Delete
+        </button>
+      `;
+    } else {
+      actions = '<span class="text-muted">No actions available</span>';
+    }
+
+    tableBody.innerHTML += `
+      <tr>
+        <td>${index + 1}</td>
+        <td><strong>${item.Item_Code}</strong></td>
+        <td>${item.Item_Name || 'N/A'}</td>
+        <td>${item.Items_Description}</td>
+        <td>${item.Unit}</td>
+        <td>₱${parseFloat(item.Unit_Cost).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+        <td>${item.Category || 'N/A'}</td>
+        <td><small>${formattedDate}</small></td>
+        <td>${actions}</td>
+      </tr>
+    `;
+  });
+
+  // Update with total count from pagination
+  const totalCount = approvedPagination ? approvedPagination.total_items : approvedItems.length;
+  updateSummary(null, totalCount);
+}
+
+// Function to update summary counts
+function updateSummary(pendingCount, approvedCount) {
+  if (pendingCount !== null) {
+    document.getElementById('pendingCount').textContent = pendingCount;
+  }
+  if (approvedCount !== null) {
+    document.getElementById('approvedCount').textContent = approvedCount;
+  }
+}
+
+// Function to show error messages
+function showError(message, tableBodyId, colspan) {
+  const tableBody = document.getElementById(tableBodyId);
+  tableBody.innerHTML = `
+    <tr>
+      <td colspan="${colspan}" class="text-center py-4">
+        <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
+        <h5 class="text-danger">Error</h5>
+        <p class="text-muted">${message}</p>
+      </td>
+    </tr>
+  `;
+}
+
 let currentDateFilter = 'week';
 let currentApprovedPage = 1;
 let approvedPagination = null;
