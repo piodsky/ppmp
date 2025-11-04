@@ -62,7 +62,10 @@ $user_role = $role;
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
 
-    <script src="../apiPPMP/api_config.js.php"></script>
+    <script>
+    // Define API_BASE_URL for this page
+    const API_BASE_URL = "<?php echo $_ENV['API_BASE_URL'] ?? '/SystemsMISPYO/PPMP/apiPPMP'; ?>";
+    </script>
 
     <style>
         :root {
