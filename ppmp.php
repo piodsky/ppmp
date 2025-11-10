@@ -42,7 +42,7 @@ $profile_picture = $validation['profile_picture'] ?? '';
 
 // Set user data for form population
 $user_department = $department;
-$user_contact = $firstname . ' ' . $middlename ?? '' . ' ' . $lastname . ' ' . $name_ext ?? '';
+$user_contact = $firstname . ' ' . ($middlename ?? '') . ' ' . $lastname . ' ' . ($name_ext ?? '');
 ?>
 
 <!DOCTYPE html>

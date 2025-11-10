@@ -100,15 +100,18 @@ function loadConsolidatedItems() {
   authenticatedFetch(url)
     .then(res => res.json())
     .then(data => {
+      console.log('API Response:', data); // Debug log
       if (data.success) {
-        allItems = data.consolidated_items;
-        allSummary = data.summary;
-        allPPMPList = data.approved_ppmp_list;
+        allItems = data.consolidated_items || [];
+        allSummary = data.summary || {};
+        allPPMPList = data.approved_ppmp_list || [];
+        console.log('Items to display:', allItems); // Debug log
+        console.log('Items length:', allItems.length); // Debug log
         displayConsolidatedItems(allItems);
         displaySummary(allSummary);
         displayApprovedPPMPs(allPPMPList);
       } else {
-        showError("Failed to load consolidated items: " + data.message);
+        showError("Failed to load consolidated items: " + (data.message || 'Unknown error'));
       }
     })
     .catch(err => {
@@ -125,7 +128,7 @@ function displayConsolidatedItems(items) {
     return;
   }
 
-  if (items.length === 0) {
+  if (!items || items.length === 0) {
     tableBody.innerHTML = `
       <tr>
         <td colspan="9" class="text-center py-4">

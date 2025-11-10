@@ -106,11 +106,12 @@ $user_role = $role;
         .table th, .table td {
             vertical-align: middle;
             text-align: center;
-            padding: 8px 4px;
+            padding: 4px 2px;
             color: var(--text-primary);
             word-wrap: break-word;
             white-space: normal;
-            line-height: 1.2;
+            line-height: 1.1;
+            font-size: 0.8rem;
         }
 
         .table thead th {
@@ -563,170 +564,152 @@ function authenticatedFetch(url, options = {}) {
   return fetch(url, { ...defaultOptions, ...options });
 }
 
-// Function to display pending items
-function displayPendingItems(pendingItems) {
-  const tableBody = document.getElementById('pendingItemsTableBody');
 
-  if (pendingItems.length === 0) {
-    tableBody.innerHTML = `
-      <tr>
-        <td colspan="10" class="text-center py-4">
-          <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
-          <h5 class="text-muted">No pending items</h5>
-          <p class="text-muted">No items are waiting for approval.</p>
-        </td>
-      </tr>
-    `;
-    updateSummary(pendingItems.length, null);
-    return;
-  }
-
-  tableBody.innerHTML = '';
-
-  pendingItems.forEach((item, index) => {
-    const formattedDate = new Date(item.created_at).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-
-    let actions = '';
-    if (USER_ROLE === 'admin') {
-      actions = `
-        <button class="btn btn-success btn-sm me-1" onclick="showApprovalModal(${item.id}, 'approve', '${item.item_code}')">
-          <i class="fas fa-check"></i> Approve
-        </button>
-        <button class="btn btn-danger btn-sm" onclick="showApprovalModal(${item.id}, 'reject', '${item.item_code}')">
-          <i class="fas fa-times"></i> Reject
-        </button>
-      `;
-    } else if (item.submitted_by === getCurrentUsername()) {
-      actions = `
-        <button class="btn btn-warning btn-sm me-1" onclick="editPendingItem(${item.id}, '${item.item_code}', '${item.item_name}', '${item.description}', '${item.unit}', ${item.unit_cost}, '${item.category}')">
-          <i class="fas fa-edit"></i> Edit
-        </button>
-        <button class="btn btn-danger btn-sm" onclick="deletePendingItem(${item.id}, '${item.item_code}')">
-          <i class="fas fa-trash"></i> Delete
-        </button>
-      `;
-    } else {
-      actions = '<span class="text-muted">Waiting for admin review</span>';
-    }
-
-    tableBody.innerHTML += `
-      <tr>
-        <td>${index + 1}</td>
-        <td><strong>${item.item_code}</strong></td>
-        <td>${item.item_name || 'N/A'}</td>
-        <td>${item.description}</td>
-        <td>${item.unit}</td>
-        <td>₱${parseFloat(item.unit_cost).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-        <td>${item.category || 'N/A'}</td>
-        <td>${item.submitted_by}</td>
-        <td><small>${formattedDate}</small></td>
-        <td>${actions}</td>
-      </tr>
-    `;
-  });
-
-  updateSummary(pendingItems.length, null);
-}
-
-// Function to display approved items
-function displayApprovedItems(approvedItems) {
-  const tableBody = document.getElementById('approvedItemsTableBody');
-
-  if (approvedItems.length === 0) {
-    tableBody.innerHTML = `
-      <tr>
-        <td colspan="9" class="text-center py-4">
-          <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
-          <h5 class="text-muted">No approved items</h5>
-          <p class="text-muted">No items have been approved yet.</p>
-        </td>
-      </tr>
-    `;
-    // Update with total count from pagination if available, otherwise 0
-    const totalCount = approvedPagination ? approvedPagination.total_items : 0;
-    updateSummary(null, totalCount);
-    document.getElementById('approvedPaginationContainer').style.display = 'none';
-    return;
-  }
-
-  tableBody.innerHTML = '';
-
-  approvedItems.forEach((item, index) => {
-    const formattedDate = new Date(item.Created_At || item.created_at).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-
-    let actions = '';
-    if (USER_ROLE === 'admin') {
-      actions = `
-        <button class="btn btn-warning btn-sm me-1" onclick="editItem(${item.ID}, '${item.Item_Code}', '${item.Item_Name}', '${item.Items_Description}', '${item.Unit}', ${item.Unit_Cost}, '${item.Category}')">
-          <i class="fas fa-edit"></i> Edit
-        </button>
-        <button class="btn btn-danger btn-sm" onclick="deleteItem(${item.ID}, '${item.Item_Code}')">
-          <i class="fas fa-trash"></i> Delete
-        </button>
-      `;
-    } else {
-      actions = '<span class="text-muted">No actions available</span>';
-    }
-
-    tableBody.innerHTML += `
-      <tr>
-        <td>${index + 1}</td>
-        <td><strong>${item.Item_Code}</strong></td>
-        <td>${item.Item_Name || 'N/A'}</td>
-        <td>${item.Items_Description}</td>
-        <td>${item.Unit}</td>
-        <td>₱${parseFloat(item.Unit_Cost).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-        <td>${item.Category || 'N/A'}</td>
-        <td><small>${formattedDate}</small></td>
-        <td>${actions}</td>
-      </tr>
-    `;
-  });
-
-  // Update with total count from pagination
-  const totalCount = approvedPagination ? approvedPagination.total_items : approvedItems.length;
-  updateSummary(null, totalCount);
-}
-
-// Function to update summary counts
-function updateSummary(pendingCount, approvedCount) {
-  if (pendingCount !== null) {
-    document.getElementById('pendingCount').textContent = pendingCount;
-  }
-  if (approvedCount !== null) {
-    document.getElementById('approvedCount').textContent = approvedCount;
-  }
-}
-
-// Function to show error messages
-function showError(message, tableBodyId, colspan) {
-  const tableBody = document.getElementById(tableBodyId);
-  tableBody.innerHTML = `
-    <tr>
-      <td colspan="${colspan}" class="text-center py-4">
-        <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
-        <h5 class="text-danger">Error</h5>
-        <p class="text-muted">${message}</p>
-      </td>
-    </tr>
-  `;
-}
 
 let currentDateFilter = 'week';
 let currentApprovedPage = 1;
 let approvedPagination = null;
+
+// Render pagination controls for approved items
+function renderApprovedPagination() {
+  const container = document.getElementById('approvedPaginationContainer');
+  const controls = document.getElementById('approvedPaginationControls');
+
+  if (!approvedPagination || approvedPagination.total_pages <= 1) {
+    container.style.display = 'none';
+    return;
+  }
+
+  container.style.display = 'flex';
+
+  // Update item count display
+  const startItem = (approvedPagination.current_page - 1) * approvedPagination.items_per_page + 1;
+  const endItem = Math.min(approvedPagination.current_page * approvedPagination.items_per_page, approvedPagination.total_items);
+
+  document.getElementById('approvedStartItem').textContent = startItem;
+  document.getElementById('approvedEndItem').textContent = endItem;
+  document.getElementById('approvedTotalItems').textContent = approvedPagination.total_items;
+
+  // Generate pagination buttons
+  controls.innerHTML = '';
+
+  // Previous button
+  const prevBtn = document.createElement('li');
+  prevBtn.className = `page-item ${!approvedPagination.has_prev ? 'disabled' : ''}`;
+  prevBtn.innerHTML = `<a class="page-link" href="#" onclick="changeApprovedPage(${approvedPagination.current_page - 1})">Previous</a>`;
+  controls.appendChild(prevBtn);
+
+  // Page numbers
+  const startPage = Math.max(1, approvedPagination.current_page - 2);
+  const endPage = Math.min(approvedPagination.total_pages, approvedPagination.current_page + 2);
+
+  if (startPage > 1) {
+    const firstBtn = document.createElement('li');
+    firstBtn.className = 'page-item';
+    firstBtn.innerHTML = `<a class="page-link" href="#" onclick="changeApprovedPage(1)">1</a>`;
+    controls.appendChild(firstBtn);
+
+    if (startPage > 2) {
+      const ellipsis = document.createElement('li');
+      ellipsis.className = 'page-item disabled';
+      ellipsis.innerHTML = '<span class="page-link">...</span>';
+      controls.appendChild(ellipsis);
+    }
+  }
+
+  for (let i = startPage; i <= endPage; i++) {
+    const pageBtn = document.createElement('li');
+    pageBtn.className = `page-item ${i === approvedPagination.current_page ? 'active' : ''}`;
+    pageBtn.innerHTML = `<a class="page-link" href="#" onclick="changeApprovedPage(${i})">${i}</a>`;
+    controls.appendChild(pageBtn);
+  }
+
+  if (endPage < approvedPagination.total_pages) {
+    if (endPage < approvedPagination.total_pages - 1) {
+      const ellipsis = document.createElement('li');
+      ellipsis.className = 'page-item disabled';
+      ellipsis.innerHTML = '<span class="page-link">...</span>';
+      controls.appendChild(ellipsis);
+    }
+
+    const lastBtn = document.createElement('li');
+    lastBtn.className = 'page-item';
+    lastBtn.innerHTML = `<a class="page-link" href="#" onclick="changeApprovedPage(${approvedPagination.total_pages})">${approvedPagination.total_pages}</a>`;
+    controls.appendChild(lastBtn);
+  }
+
+  // Next button
+  const nextBtn = document.createElement('li');
+  nextBtn.className = `page-item ${!approvedPagination.has_next ? 'disabled' : ''}`;
+  nextBtn.innerHTML = `<a class="page-link" href="#" onclick="changeApprovedPage(${approvedPagination.current_page + 1})">Next</a>`;
+  controls.appendChild(nextBtn);
+}
+
+// Change page function
+function changeApprovedPage(page) {
+  if (page >= 1 && page <= approvedPagination.total_pages) {
+    loadApprovedItems(page);
+  }
+}
+
+// Display pending items
+function displayPendingItems(items) {
+    const tableBody = document.getElementById('pendingItemsTableBody');
+    const pendingCount = document.getElementById('pendingCount');
+
+    if (items.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="10" class="text-center py-4">
+                    <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">No pending items</h5>
+                    <p class="text-muted">All items have been reviewed.</p>
+                </td>
+            </tr>
+        `;
+        if (pendingCount) pendingCount.textContent = '0';
+        return;
+    }
+
+    tableBody.innerHTML = '';
+
+    items.forEach((item, index) => {
+        const submittedDate = new Date(item.Created_At).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        });
+
+        let actions = '';
+        if (USER_ROLE === 'admin') {
+            actions = '<div class="btn-group btn-group-sm" role="group">' +
+                `<button class="btn btn-success" onclick="showApprovalModal(${item.ID}, 'approve', '${item.Item_Code}')" title="Approve"><i class="fas fa-check"></i></button>` +
+                `<button class="btn btn-danger" onclick="showApprovalModal(${item.ID}, 'reject', '${item.Item_Code}')" title="Reject"><i class="fas fa-times"></i></button>` +
+                `<button class="btn btn-warning" onclick="editPendingItem(${item.ID}, '${item.Item_Code}', '${item.Item_Name}', '${item.Items_Description}', '${item.Unit}', ${item.Unit_Cost}, '${item.Category}')" title="Edit"><i class="fas fa-edit"></i></button>` +
+                `<button class="btn btn-danger" onclick="deletePendingItem(${item.ID}, '${item.Item_Code}')" title="Delete"><i class="fas fa-trash"></i></button>` +
+                '</div>';
+        } else {
+            actions = '<span class="text-muted">Awaiting admin review</span>';
+        }
+
+        tableBody.innerHTML += `
+            <tr>
+                <td>${index + 1}</td>
+                <td><span class="fw-bold">${item.Item_Code}</span></td>
+                <td class="text-truncate" style="max-width: 100px;" title="${item.Item_Name || 'N/A'}">${item.Item_Name || 'N/A'}</td>
+                <td class="text-truncate" style="max-width: 120px;" title="${item.Items_Description}">${item.Items_Description}</td>
+                <td>${item.Unit}</td>
+                <td><span class="fw-bold text-success">₱${parseFloat(item.Unit_Cost).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></td>
+                <td class="text-truncate" style="max-width: 80px;" title="${item.Category || 'N/A'}">${item.Category || 'N/A'}</td>
+                <td class="text-truncate" style="max-width: 80px;" title="${item.Submitted_By}">${item.Submitted_By}</td>
+                <td>${submittedDate}</td>
+                <td>${actions}</td>
+            </tr>
+        `;
+    });
+
+    if (pendingCount) pendingCount.textContent = items.length;
+}
 
 // Load pending items
 function loadPendingItems() {
@@ -741,18 +724,82 @@ function loadPendingItems() {
     `;
 
     authenticatedFetch(`${API_BASE_URL}/api_get_pending_items.php`)
-        .then(response => response.json())
+        .then(response => {
+            console.log('Pending items response status:', response.status);
+            return response.json();
+        })
         .then(data => {
+            console.log('Pending items API response:', data);
             if (data.success) {
+                console.log('Pending items data:', data.pending_items);
                 displayPendingItems(data.pending_items || []);
             } else {
-                showError('Failed to load pending items', 'pendingItemsTableBody', 10);
+                showError('Failed to load pending items: ' + (data.message || 'Unknown error'), 'pendingItemsTableBody', 10);
             }
         })
         .catch(error => {
             console.error('Error loading pending items:', error);
-            showError('Network error loading pending items', 'pendingItemsTableBody', 10);
+            showError('Network error loading pending items: ' + error.message, 'pendingItemsTableBody', 10);
         });
+}
+
+// Display approved items
+function displayApprovedItems(items) {
+    const tableBody = document.getElementById('approvedItemsTableBody');
+    const approvedCount = document.getElementById('approvedCount');
+
+    if (items.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="9" class="text-center py-4">
+                    <i class="fas fa-database fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">No approved items found</h5>
+                    <p class="text-muted">No items match your current filter criteria.</p>
+                </td>
+            </tr>
+        `;
+        if (approvedCount) approvedCount.textContent = '0';
+        return;
+    }
+
+    tableBody.innerHTML = '';
+
+    items.forEach((item, index) => {
+        const createdDate = new Date(item.Created_At).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        });
+
+        let actions = '';
+        if (USER_ROLE === 'admin') {
+            actions = '<div class="btn-group btn-group-sm" role="group">' +
+                `<button class="btn btn-warning" onclick="editItem(${item.ID}, '${item.Item_Code}', '${item.Item_Name}', '${item.Items_Description}', '${item.Unit}', ${item.Unit_Cost}, '${item.Category}')" title="Edit"><i class="fas fa-edit"></i></button>` +
+                `<button class="btn btn-danger" onclick="deleteItem(${item.ID}, '${item.Item_Code}')" title="Delete"><i class="fas fa-trash"></i></button>` +
+                '</div>';
+        } else {
+            actions = '<span class="text-muted">No actions</span>';
+        }
+
+        tableBody.innerHTML += `
+            <tr>
+                <td>${(currentApprovedPage - 1) * 50 + index + 1}</td>
+                <td><span class="fw-bold">${item.Item_Code}</span></td>
+                <td class="text-truncate" style="max-width: 100px;" title="${item.Item_Name || 'N/A'}">${item.Item_Name || 'N/A'}</td>
+                <td class="text-truncate" style="max-width: 120px;" title="${item.Items_Description}">${item.Items_Description}</td>
+                <td>${item.Unit}</td>
+                <td><span class="fw-bold text-success">₱${parseFloat(item.Unit_Cost).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></td>
+                <td class="text-truncate" style="max-width: 80px;" title="${item.Category || 'N/A'}">${item.Category || 'N/A'}</td>
+                <td>${createdDate}</td>
+                <td>${actions}</td>
+            </tr>
+        `;
+    });
+
+    // Update total count if we have pagination info
+    if (approvedPagination && approvedPagination.total_items) {
+        if (approvedCount) approvedCount.textContent = approvedPagination.total_items;
+    }
 }
 
 // Load approved items
@@ -803,11 +850,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // Add event listener for refresh button
     document.getElementById('refreshBtn').addEventListener('click', loadItems);
 });
-</script>
 
 // Pass user role from PHP to JS
 let USER_ROLE = '<?php echo $user_role; ?>';
 let USERNAME = '<?php echo $user; ?>';
+
+// Initialize theme manager after DOM is loaded
 
 // Function to get current username from token manager
 function getCurrentUsername() {
@@ -820,8 +868,6 @@ function getCurrentUserRole() {
     const userData = getUserData();
     return userData ? userData.role : 'user';
 }
-
-// USERNAME and USER_ROLE are now set in the authentication block
 
 
 
@@ -895,231 +941,7 @@ class ItemsListThemeManager {
 }
 
 
-function displayPendingItems(pendingItems) {
-    const tableBody = document.getElementById('pendingItemsTableBody');
 
-    if (pendingItems.length === 0) {
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="10" class="text-center py-4">
-                    <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
-                    <h5 class="text-muted">No pending items</h5>
-                    <p class="text-muted">No items are waiting for approval.</p>
-                </td>
-            </tr>
-        `;
-        updateSummary(pendingItems.length, null);
-        return;
-    }
-
-    tableBody.innerHTML = '';
-
-    pendingItems.forEach((item, index) => {
-        const formattedDate = new Date(item.created_at).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-
-        let actions = '';
-        if (USER_ROLE === 'admin') {
-            actions = `
-                <button class="btn btn-success btn-sm me-1" onclick="showApprovalModal(${item.id}, 'approve', '${item.item_code}')">
-                    <i class="fas fa-check"></i> Approve
-                </button>
-                <button class="btn btn-danger btn-sm" onclick="showApprovalModal(${item.id}, 'reject', '${item.item_code}')">
-                    <i class="fas fa-times"></i> Reject
-                </button>
-            `;
-        } else if (item.submitted_by === getCurrentUsername()) {
-            actions = `
-                <button class="btn btn-warning btn-sm me-1" onclick="editPendingItem(${item.id}, '${item.item_code}', '${item.item_name}', '${item.description}', '${item.unit}', ${item.unit_cost}, '${item.category}')">
-                    <i class="fas fa-edit"></i> Edit
-                </button>
-                <button class="btn btn-danger btn-sm" onclick="deletePendingItem(${item.id}, '${item.item_code}')">
-                    <i class="fas fa-trash"></i> Delete
-                </button>
-            `;
-        } else {
-            actions = '<span class="text-muted">Waiting for admin review</span>';
-        }
-
-        tableBody.innerHTML += `
-            <tr>
-                <td>${index + 1}</td>
-                <td><strong>${item.item_code}</strong></td>
-                <td>${item.item_name || 'N/A'}</td>
-                <td>${item.description}</td>
-                <td>${item.unit}</td>
-                <td>₱${parseFloat(item.unit_cost).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                <td>${item.category || 'N/A'}</td>
-                <td>${item.submitted_by}</td>
-                <td><small>${formattedDate}</small></td>
-                <td>${actions}</td>
-            </tr>
-        `;
-    });
-
-    updateSummary(pendingItems.length, null);
-}
-
-function displayApprovedItems(approvedItems) {
-    const tableBody = document.getElementById('approvedItemsTableBody');
-
-    if (approvedItems.length === 0) {
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="9" class="text-center py-4">
-                    <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
-                    <h5 class="text-muted">No approved items</h5>
-                    <p class="text-muted">No items have been approved yet.</p>
-                </td>
-            </tr>
-        `;
-        // Update with total count from pagination if available, otherwise 0
-        const totalCount = approvedPagination ? approvedPagination.total_items : 0;
-        updateSummary(null, totalCount);
-        document.getElementById('approvedPaginationContainer').style.display = 'none';
-        return;
-    }
-
-    tableBody.innerHTML = '';
-
-    approvedItems.forEach((item, index) => {
-        const formattedDate = new Date(item.Created_At || item.created_at).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-
-        let actions = '';
-        if (USER_ROLE === 'admin') {
-            actions = `
-                <button class="btn btn-warning btn-sm me-1" onclick="editItem(${item.ID}, '${item.Item_Code}', '${item.Item_Name}', '${item.Items_Description}', '${item.Unit}', ${item.Unit_Cost}, '${item.Category}')">
-                    <i class="fas fa-edit"></i> Edit
-                </button>
-                <button class="btn btn-danger btn-sm" onclick="deleteItem(${item.ID}, '${item.Item_Code}')">
-                    <i class="fas fa-trash"></i> Delete
-                </button>
-            `;
-        } else {
-            actions = '<span class="text-muted">No actions available</span>';
-        }
-
-        tableBody.innerHTML += `
-            <tr>
-                <td>${index + 1}</td>
-                <td><strong>${item.Item_Code}</strong></td>
-                <td>${item.Item_Name || 'N/A'}</td>
-                <td>${item.Items_Description}</td>
-                <td>${item.Unit}</td>
-                <td>₱${parseFloat(item.Unit_Cost).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                <td>${item.Category || 'N/A'}</td>
-                <td><small>${formattedDate}</small></td>
-                <td>${actions}</td>
-            </tr>
-        `;
-    });
-
-    // Update with total count from pagination
-    const totalCount = approvedPagination ? approvedPagination.total_items : approvedItems.length;
-    updateSummary(null, totalCount);
-}
-
-function updateSummary(pendingCount, approvedCount) {
-    if (pendingCount !== null) {
-        document.getElementById('pendingCount').textContent = pendingCount;
-    }
-    if (approvedCount !== null) {
-        document.getElementById('approvedCount').textContent = approvedCount;
-    }
-}
-
-// Render pagination controls for approved items
-function renderApprovedPagination() {
-    const container = document.getElementById('approvedPaginationContainer');
-    const controls = document.getElementById('approvedPaginationControls');
-
-    if (!approvedPagination || approvedPagination.total_pages <= 1) {
-        container.style.display = 'none';
-        return;
-    }
-
-    container.style.display = 'flex';
-
-    // Update item count display
-    const startItem = (approvedPagination.current_page - 1) * approvedPagination.items_per_page + 1;
-    const endItem = Math.min(approvedPagination.current_page * approvedPagination.items_per_page, approvedPagination.total_items);
-
-    document.getElementById('approvedStartItem').textContent = startItem;
-    document.getElementById('approvedEndItem').textContent = endItem;
-    document.getElementById('approvedTotalItems').textContent = approvedPagination.total_items;
-
-    // Generate pagination buttons
-    controls.innerHTML = '';
-
-    // Previous button
-    const prevBtn = document.createElement('li');
-    prevBtn.className = `page-item ${!approvedPagination.has_prev ? 'disabled' : ''}`;
-    prevBtn.innerHTML = `<a class="page-link" href="#" onclick="changeApprovedPage(${approvedPagination.current_page - 1})">Previous</a>`;
-    controls.appendChild(prevBtn);
-
-    // Page numbers
-    const startPage = Math.max(1, approvedPagination.current_page - 2);
-    const endPage = Math.min(approvedPagination.total_pages, approvedPagination.current_page + 2);
-
-    if (startPage > 1) {
-        const firstBtn = document.createElement('li');
-        firstBtn.className = 'page-item';
-        firstBtn.innerHTML = `<a class="page-link" href="#" onclick="changeApprovedPage(1)">1</a>`;
-        controls.appendChild(firstBtn);
-
-        if (startPage > 2) {
-            const ellipsis = document.createElement('li');
-            ellipsis.className = 'page-item disabled';
-            ellipsis.innerHTML = '<span class="page-link">...</span>';
-            controls.appendChild(ellipsis);
-        }
-    }
-
-    for (let i = startPage; i <= endPage; i++) {
-        const pageBtn = document.createElement('li');
-        pageBtn.className = `page-item ${i === approvedPagination.current_page ? 'active' : ''}`;
-        pageBtn.innerHTML = `<a class="page-link" href="#" onclick="changeApprovedPage(${i})">${i}</a>`;
-        controls.appendChild(pageBtn);
-    }
-
-    if (endPage < approvedPagination.total_pages) {
-        if (endPage < approvedPagination.total_pages - 1) {
-            const ellipsis = document.createElement('li');
-            ellipsis.className = 'page-item disabled';
-            ellipsis.innerHTML = '<span class="page-link">...</span>';
-            controls.appendChild(ellipsis);
-        }
-
-        const lastBtn = document.createElement('li');
-        lastBtn.className = 'page-item';
-        lastBtn.innerHTML = `<a class="page-link" href="#" onclick="changeApprovedPage(${approvedPagination.total_pages})">${approvedPagination.total_pages}</a>`;
-        controls.appendChild(lastBtn);
-    }
-
-    // Next button
-    const nextBtn = document.createElement('li');
-    nextBtn.className = `page-item ${!approvedPagination.has_next ? 'disabled' : ''}`;
-    nextBtn.innerHTML = `<a class="page-link" href="#" onclick="changeApprovedPage(${approvedPagination.current_page + 1})">Next</a>`;
-    controls.appendChild(nextBtn);
-}
-
-// Change page function
-function changeApprovedPage(page) {
-    if (page >= 1 && page <= approvedPagination.total_pages) {
-        loadApprovedItems(page);
-    }
-}
 
 function showError(message, tableBodyId, colspan) {
     const tableBody = document.getElementById(tableBodyId);
@@ -1730,6 +1552,7 @@ document.getElementById('dateFilter').addEventListener('change', function() {
 document.addEventListener('DOMContentLoaded', function() {
     new ItemsListThemeManager();
 });
+</script>
 </script>
 
 </body>

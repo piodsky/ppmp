@@ -1857,106 +1857,6 @@ function initializeLoadingAnimation() {
     progress += increment;
     if (progressBar) {
       progressBar.style.width = Math.min(progress, 100) + '%';
-async function handleLogin(event) {
-    event.preventDefault();
-
-    console.log('=== LOGIN ATTEMPT START ===');
-
-    const username = document.getElementById('username').value.trim();
-    const password = document.getElementById('password').value.trim();
-    const errorMessage = document.getElementById('error-message');
-    const loginBtn = document.getElementById('loginBtn');
-    const btnText = document.getElementById('btnText');
-    const btnLoading = document.getElementById('btnLoading');
-
-    console.log('Login attempt details:');
-    console.log('- Username:', username);
-    console.log('- Password provided:', !!password);
-    console.log('- Password length:', password.length);
-
-    // Clear previous error
-    errorMessage.style.display = 'none';
-
-    // Validate inputs
-    if (!username || !password) {
-        console.log('Validation failed: Missing credentials');
-        showError('Please fill in all fields.');
-        return;
-    }
-
-    // Show loading state
-    loginBtn.disabled = true;
-    btnText.style.display = 'none';
-    btnLoading.style.display = 'inline-block';
-
-    console.log('Starting login request...');
-    console.log('API_BASE_URL:', API_BASE_URL);
-
-    try {
-        const requestData = { username, password };
-        console.log('Request data:', requestData);
-
-        const response = await fetch(`${API_BASE_URL}/api_auth.php`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestData)
-        });
-
-        console.log('Response received:');
-        console.log('- Status:', response.status);
-        console.log('- Status text:', response.statusText);
-        console.log('- Headers:', Object.fromEntries(response.headers.entries()));
-
-        const data = await response.json();
-        console.log('Response data:', data);
-
-        if (data.status === 'success') {
-            console.log('Login successful! Processing response...');
-
-            // Store tokens in localStorage (for API access)
-            localStorage.setItem('access_token', data.tokens.access_token);
-            localStorage.setItem('refresh_token', data.tokens.refresh_token);
-            localStorage.setItem('user_data', JSON.stringify(data.user));
-
-            console.log('Tokens stored successfully');
-            console.log('Current time:', Date.now());
-
-            // Set token in HTTP-only cookie for secure session establishment
-            // Remove 'secure' flag for localhost development, no expiry since tokens don't expire
-            // Use SameSite=lax to allow cookie on navigation
-            const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            const secureFlag = isLocalhost ? '' : '; secure';
-            document.cookie = 'auth_token=' + encodeURIComponent(data.tokens.access_token) +
-                             '; path=/' + secureFlag + '; samesite=lax'; // No max-age since tokens don't expire
-  
-            console.log('Cookie set:', document.cookie);
-            console.log('Redirecting to dashboard...');
-
-            // Redirect to dashboard without exposing token in URL
-            window.location.href = 'dashboard.php';
-        } else {
-            console.log('Login failed:', data.message);
-            // Error - show message
-            showError(data.message || 'Login failed. Please try again.');
-        }
-    } catch (error) {
-        console.error('Login error:', error);
-        console.error('Error details:', {
-            name: error.name,
-            message: error.message,
-            stack: error.stack
-        });
-        showError('Network error. Please check your connection and try again.');
-    } finally {
-        // Reset loading state
-        loginBtn.disabled = false;
-        btnText.style.display = 'inline';
-        btnLoading.style.display = 'none';
-        console.log('=== LOGIN ATTEMPT END ===');
-    }
-}
     }
 
     if (progress >= 100) {
@@ -2071,7 +1971,14 @@ async function handleLogin(event) {
          console.log('Redirecting to dashboard...');
 
          // Redirect to dashboard without exposing token in URL
-         window.location.href = 'dashboard.php';
+         console.log('About to redirect to dashboard.php');
+         console.log('Current location before redirect:', window.location.href);
+         try {
+             window.location.href = 'dashboard.php';
+             console.log('Redirect initiated');
+         } catch (error) {
+             console.error('Redirect failed:', error);
+         }
       } else {
          console.log('Login failed:', data.message);
          // Error - show message

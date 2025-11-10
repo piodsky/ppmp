@@ -43,6 +43,17 @@ $profile_picture = $validation['profile_picture'] ?? '';
 // Set user data for JavaScript
 $user = $username;
 $user_role = $role;
+
+// Load items directly from database
+try {
+    $stmt = $conn->prepare("SELECT ID, Item_Code, Item_Name, Items_Description, Unit, Unit_Cost, Category FROM tbl_ppmp_bac_items ORDER BY Item_Code ASC");
+    $stmt->execute();
+    $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    error_log("Loaded " . count($items) . " items from database");
+} catch (PDOException $e) {
+    $items = [];
+    error_log("Error loading items: " . $e->getMessage());
+}
 ?>
 
 <!DOCTYPE html>
@@ -67,6 +78,33 @@ $user_role = $role;
     <script>
     // Define API_BASE_URL for this page
     const API_BASE_URL = "<?php echo $_ENV['API_BASE_URL'] ?? '/SystemsMISPYO/PPMP/apiPPMP'; ?>";
+
+    // Load items via AJAX without authentication
+    let preloadedItems = [];
+
+    function loadItemsDirectly() {
+        return fetch('get_items_direct.php', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.items) {
+                preloadedItems = data.items;
+                console.log('Loaded', preloadedItems.length, 'items directly');
+                return preloadedItems;
+            } else {
+                console.error('Failed to load items:', data.error);
+                return [];
+            }
+        })
+        .catch(error => {
+            console.error('Error loading items directly:', error);
+            return [];
+        });
+    }
     </script>
 
     <style>
@@ -590,79 +628,12 @@ function getAccessToken() {
 </script>
 
 <script>
-// Helper functions for authentication
-function isLoggedIn() {
-  const token = localStorage.getItem('access_token');
-  // Since tokens don't expire, just check if token exists
-  return !!token;
-}
-
-function getUserData() {
-  const userData = localStorage.getItem('user_data');
-  return userData ? JSON.parse(userData) : null;
-}
-
-function getAccessToken() {
-  return localStorage.getItem('access_token');
-}
-</script>
-
-<script>
 // View Database Items initialization - authentication handled by PHP
 document.addEventListener('DOMContentLoaded', function() {
     console.log('View Database Items page loaded successfully');
+    console.log('Preloaded items available:', typeof preloadedItems !== 'undefined' ? preloadedItems.length : 'undefined');
 });
 
-// Function to display items
-function displayItems(items, isFiltered = false) {
-  const tableBody = document.getElementById('itemsTableBody');
-
-  if (items.length === 0) {
-    tableBody.innerHTML = `
-      <tr>
-        <td colspan="8" class="text-center py-4">
-          <i class="fas fa-database fa-3x text-muted mb-3"></i>
-          <h5 class="text-muted">No items found</h5>
-          <p class="text-muted">No items match your search criteria.</p>
-        </td>
-      </tr>
-    `;
-    return;
-  }
-
-  tableBody.innerHTML = '';
-
-  items.forEach((item, index) => {
-    const itemNumber = isFiltered ? index + 1 : (currentPage - 1) * itemsPerPage + index + 1;
-
-    let actions = '';
-    if (userRole === 'admin') {
-      actions = `
-        <button class="btn btn-custom btn-edit me-1" onclick="editItem(${item.ID}, '${item.Item_Code}', '${item.Item_Name}', '${item.Items_Description}', '${item.Unit}', ${item.Unit_Cost}, '${item.Category}')">
-          <i class="fas fa-edit"></i> Edit
-        </button>
-        <button class="btn btn-custom btn-delete" onclick="deleteItem(${item.ID}, '${item.Item_Code}')">
-          <i class="fas fa-trash"></i> Delete
-        </button>
-      `;
-    } else {
-      actions = '<span class="text-muted">No actions</span>';
-    }
-
-    tableBody.innerHTML += `
-      <tr>
-        <td>${itemNumber}</td>
-        <td><span class="item-code">${item.Item_Code}</span></td>
-        <td><span class="item-name">${item.Item_Name || 'N/A'}</span></td>
-        <td>${item.Items_Description}</td>
-        <td>${item.Unit}</td>
-        <td><span class="unit-cost">₱${parseFloat(item.Unit_Cost).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></td>
-        <td>${item.Category || 'N/A'}</td>
-        <td>${actions}</td>
-      </tr>
-    `;
-  });
-}
 
 // Function to update total count
 function updateTotalCount() {
@@ -766,7 +737,10 @@ class DatabaseViewerThemeManager {
         this.applyTheme(this.currentTheme);
         this.setupToggle();
         this.updateToggleIcon();
-        loadItems();
+        // Load items after ensuring data is available
+        loadItemsDirectly().then(() => {
+            loadItems();
+        });
     }
 
     setupToggle() {
@@ -814,7 +788,7 @@ class DatabaseViewerThemeManager {
     }
 }
 
-// Load items from database
+// Load items from database (direct database query instead of API call)
 function loadItems(page = 1) {
     currentPage = page;
 
@@ -829,66 +803,29 @@ function loadItems(page = 1) {
         </tr>
     `;
 
-    // Load items
-    const url = `${API_BASE_URL}/get_items.php?page=1&limit=1000`;
+    // Use the pre-loaded items data instead of API call
+    try {
+        if (typeof preloadedItems !== 'undefined' && preloadedItems.length > 0) {
+            allItems = preloadedItems;
+            filteredItems = allItems;
+            totalItems = allItems.length;
+            totalPages = Math.ceil(totalItems / itemsPerPage);
+            currentPage = 1;
 
-    authenticatedFetch(url)
-        .then(response => {
-            console.log('Load items response status:', response.status);
-            console.log('Load items response headers:', response.headers);
+            isSearching = false;
+            displayItems(allItems.slice(0, itemsPerPage));
+            updatePaginationControls();
+            updateTotalCount();
 
-            // Check if response is not ok (like 401, 500, etc.)
-            if (!response.ok) {
-                return response.text().then(text => {
-                    console.log('Error response text:', text);
-                    throw new Error(`HTTP ${response.status}: ${text}`);
-                });
-            }
-
-            return response.text().then(text => {
-                console.log('Raw response text:', text);
-                console.log('Response text length:', text.length);
-                console.log('Response text is empty?', text.trim() === '');
-
-                if (!text || text.trim() === '') {
-                    throw new Error('Empty response from server');
-                }
-
-                try {
-                    return JSON.parse(text);
-                } catch (e) {
-                    console.error('JSON parse error:', e);
-                    console.error('Response content type:', response.headers.get('content-type'));
-                    throw new Error(`Invalid JSON response: ${text.substring(0, 200)}...`);
-                }
-            });
-        })
-        .then(data => {
-            console.log('Parsed load items response:', data);
-            if (data.items) {
-                allItems = data.items;
-                filteredItems = allItems;
-                totalItems = data.items.length;
-                totalPages = Math.ceil(totalItems / itemsPerPage);
-                currentPage = 1;
-
-                isSearching = false;
-                displayItems(allItems.slice(0, itemsPerPage));
-                updatePaginationControls();
-                updateTotalCount();
-            } else {
-                showError('Error loading items: ' + (data.error || 'Unknown error'));
-            }
-        })
-        .catch(error => {
-            console.error('Error loading items:', error);
-            console.error('Error details:', {
-                message: error.message,
-                stack: error.stack,
-                name: error.name
-            });
-            showError('Network error loading items: ' + error.message);
-        });
+            console.log('Items loaded successfully:', totalItems, 'items');
+        } else {
+            console.log('No items data available - checking if loadItemsDirectly was called');
+            showError('No items data available. Please refresh the page.');
+        }
+    } catch (error) {
+        console.error('Error loading items:', error);
+        showError('Error loading items: ' + error.message);
+    }
 }
 
 function displayItems(items, isFiltered = false) {

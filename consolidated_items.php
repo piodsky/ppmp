@@ -726,11 +726,180 @@ $profile_picture = $validation['profile_picture'] ?? '';
       });
   }
 
+  // Load consolidated items function
+  function loadConsolidatedItems() {
+      const searchTerm = document.getElementById('searchInput').value;
+      const yearFilter = document.getElementById('yearFilter').value;
+
+      // Show loading
+      const tableBody = document.getElementById('consolidatedTableBody');
+      tableBody.innerHTML = `
+          <tr>
+              <td colspan="9" class="text-center py-4">
+                  <i class="fas fa-spinner fa-spin fa-2x"></i>
+                  <p class="mt-2">Loading consolidated items...</p>
+              </td>
+          </tr>
+      `;
+
+      authenticatedFetch(`${API_BASE_URL}/api_get_consolidated_items.php?search=${encodeURIComponent(searchTerm)}&year=${encodeURIComponent(yearFilter)}`)
+        .then(response => response.json())
+        .then(data => {
+            console.log('Consolidated items API response:', data); // Debug log
+            if (data.success) {
+                console.log('Items data:', data.consolidated_items); // Debug log
+                displayConsolidatedItems(data.consolidated_items);
+                updateSummary(data.summary);
+                loadApprovedPPMPList(data.approved_ppmp_list);
+            } else {
+                showError('Failed to load consolidated items', 'consolidatedTableBody', 9);
+            }
+        })
+          .catch(error => {
+              console.error('Error loading consolidated items:', error);
+              showError('Network error loading consolidated items', 'consolidatedTableBody', 9);
+          });
+  }
+
+  // Display consolidated items
+  function displayConsolidatedItems(items) {
+      const tableBody = document.getElementById('consolidatedTableBody');
+
+      if (!items || items.length === 0) {
+          tableBody.innerHTML = `
+              <tr>
+                  <td colspan="9" class="text-center py-4">
+                      <i class="fas fa-database fa-3x text-muted mb-3"></i>
+                      <h5 class="text-muted">No consolidated items found</h5>
+                      <p class="text-muted">No items match your search criteria.</p>
+                  </td>
+              </tr>
+          `;
+          return;
+      }
+
+      tableBody.innerHTML = '';
+
+      items.forEach((item, index) => {
+          tableBody.innerHTML += `
+              <tr>
+                  <td>${index + 1}</td>
+                  <td><span class="fw-bold">${item.item_code}</span></td>
+                  <td>${item.item_name}</td>
+                  <td>${item.description}</td>
+                  <td>${item.unit}</td>
+                  <td><span class="fw-bold text-success">₱${parseFloat(item.unit_cost).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></td>
+                  <td>${item.total_quantity}</td>
+                  <td><span class="fw-bold text-primary">₱${parseFloat(item.total_cost).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></td>
+                  <td><span class="consolidated-badge">${item.ppmp_count}</span></td>
+              </tr>
+          `;
+      });
+  }
+
+  // Update summary section
+  function updateSummary(summary) {
+      document.getElementById('totalItems').textContent = summary.total_items;
+      document.getElementById('totalCost').textContent = parseFloat(summary.total_cost).toLocaleString('en-US', { minimumFractionDigits: 2 });
+      document.getElementById('approvedPPMPs').textContent = summary.approved_ppmp_count;
+  }
+
+  // Load approved PPMP list
+  function loadApprovedPPMPList(ppmpList) {
+      const container = document.getElementById('approvedPPMPList');
+      container.innerHTML = '';
+
+      if (ppmpList.length === 0) {
+          container.innerHTML = '<p class="text-muted">No approved PPMP documents found.</p>';
+          return;
+      }
+
+      ppmpList.forEach(ppmp => {
+          container.innerHTML += `
+              <div class="mb-2">
+                  <strong>${ppmp.year} - ${ppmp.department}</strong>
+                  <small class="text-muted d-block">Approved: ${new Date(ppmp.approved_at).toLocaleDateString()}</small>
+              </div>
+          `;
+      });
+  }
+
+  // Export consolidated items
+  function exportConsolidated() {
+      if (confirm('Export consolidated items to CSV?')) {
+          const token = getAccessToken();
+          window.location.href = 'generate_consolidated_report.php?export=csv&token=' + encodeURIComponent(token);
+      }
+  }
+
+  // Export department report
+  function exportDepartmentReport() {
+      if (confirm('Export department report to CSV?')) {
+          const token = getAccessToken();
+          window.location.href = 'generate_department_report.php?export=csv&token=' + encodeURIComponent(token);
+      }
+  }
+
+  // Preview APP Report
+  function previewAPPReport() {
+      const token = getAccessToken();
+      window.open('generate_app_report.php?preview=1&token=' + encodeURIComponent(token), '_blank');
+  }
+
+  // Download APP Report
+  function downloadAPPReport() {
+      if (confirm('Download APP report PDF?')) {
+          const token = getAccessToken();
+          window.location.href = 'generate_app_report.php?token=' + encodeURIComponent(token);
+      }
+  }
+
+  // Load available years for filter
+  function loadAvailableYears() {
+      authenticatedFetch(`${API_BASE_URL}/api_get_available_years.php`)
+          .then(response => response.json())
+          .then(data => {
+              if (data.success) {
+                  const yearFilter = document.getElementById('yearFilter');
+                  yearFilter.innerHTML = '<option value="">All Years</option>';
+
+                  data.years.forEach(year => {
+                      yearFilter.innerHTML += `<option value="${year}">${year}</option>`;
+                  });
+              }
+          })
+          .catch(error => {
+              console.error('Error loading available years:', error);
+          });
+  }
+
+  // Show error function
+  function showError(message, tableBodyId, colspan) {
+      const tableBody = document.getElementById(tableBodyId);
+      tableBody.innerHTML = `
+          <tr>
+              <td colspan="${colspan}" class="text-center py-4">
+                  <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
+                  <h5 class="text-danger">Error</h5>
+                  <p class="text-muted">${message}</p>
+              </td>
+          </tr>
+      `;
+  }
+
   // Initialize theme manager when DOM loads
   document.addEventListener('DOMContentLoaded', function() {
       new ConsolidatedItemsThemeManager();
+      loadAvailableYears();
+      loadConsolidatedItems();
       loadAPPReportData();
       loadDepartmentReportData();
+
+      // Add search functionality
+      document.getElementById('searchInput').addEventListener('input', function() {
+          clearTimeout(this.searchTimeout);
+          this.searchTimeout = setTimeout(loadConsolidatedItems, 500);
+      });
   });
   </script>
 </body>

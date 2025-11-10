@@ -1243,9 +1243,7 @@ function openProfileModal() {
 
     // Populate profile data from PHP session variables
     document.getElementById('profileFirstname').value = '<?php echo htmlspecialchars($firstname); ?>';
-    document.getElementById('profileMiddlename').value = '<?php echo htmlspecialchars($middlename ?? ""); ?>';
     document.getElementById('profileLastname').value = '<?php echo htmlspecialchars($lastname); ?>';
-    document.getElementById('profileNameExt').value = '<?php echo htmlspecialchars($name_ext ?? ""); ?>';
     document.getElementById('profileUsername').value = '<?php echo htmlspecialchars($username); ?>';
     document.getElementById('profileRole').value = '<?php echo htmlspecialchars($role); ?>';
     document.getElementById('profileDepartment').value = '<?php echo htmlspecialchars($department); ?>';
