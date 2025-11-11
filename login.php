@@ -17,6 +17,8 @@
     <link rel="stylesheet" href="argondashboard/assets/css/nucleo-svg.css">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="assets/font-awesome.min.css">
+    <!-- Custom Login CSS -->
+    <link rel="stylesheet" href="css/login.css">
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
 
@@ -1660,7 +1662,6 @@ document.addEventListener('DOMContentLoaded', function() {
   // Check existing tokens
   const accessToken = localStorage.getItem('access_token');
   const refreshToken = localStorage.getItem('refresh_token');
-  const tokenExpiresAt = localStorage.getItem('token_expires_at');
   const userData = localStorage.getItem('user_data');
 // Check if user has valid tokens and redirect if logged in
 async function checkExistingLogin() {
@@ -1761,69 +1762,55 @@ async function checkExistingLogin() {
     console.log('=== CHECK EXISTING LOGIN START ===');
 
     const accessToken = localStorage.getItem('access_token');
-    const tokenExpiresAt = localStorage.getItem('token_expires_at');
 
     console.log('Checking existing login...');
     console.log('Access token exists:', !!accessToken);
-    console.log('Token expires at:', tokenExpiresAt);
 
-    if (accessToken && tokenExpiresAt) {
-        // Check if token is not expired
-        const expiresAt = parseInt(tokenExpiresAt);
-        const currentTime = Date.now();
-        console.log('Parsed expires at:', expiresAt);
-        console.log('Current time:', currentTime);
-        console.log('Time difference:', expiresAt - currentTime);
-
-        if (currentTime < expiresAt) {
-            console.log('Token not expired, verifying with server...');
-            // Token exists and not expired, verify with server
-            try {
-                console.log('Making verification request to:', `${API_BASE_URL}/api_verify_token.php`);
-                const response = await fetch(`${API_BASE_URL}/api_verify_token.php`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${accessToken}`
-                    }
-                });
-
-                console.log('Verification response status:', response.status);
-                console.log('Verification response headers:', Object.fromEntries(response.headers.entries()));
-
-                if (response.ok) {
-                    const data = await response.json();
-                    console.log('Verification response:', data);
-
-                    if (data.status === 'success') {
-                        console.log('Token valid, redirecting to dashboard...');
-                        // User is logged in, redirect to dashboard immediately
-                        window.location.href = 'dashboard.php';
-                        return true; // Indicate redirect happened
-                    } else {
-                        console.log('Token verification failed:', data.message);
-                    }
-                } else {
-                    console.log('Verification request failed with status:', response.status);
-                    const errorText = await response.text();
-                    console.log('Error response body:', errorText);
+    if (accessToken) {
+        console.log('Token exists, verifying with server...');
+        // Token exists, verify with server (no expiry check)
+        try {
+            console.log('Making verification request to:', `${API_BASE_URL}/api_verify_token.php`);
+            const response = await fetch(`${API_BASE_URL}/api_verify_token.php`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
                 }
-            } catch (error) {
-                console.error('Token verification error:', error);
-                console.error('Error details:', {
-                    name: error.name,
-                    message: error.message,
-                    stack: error.stack
-                });
+            });
+
+            console.log('Verification response status:', response.status);
+            console.log('Verification response headers:', Object.fromEntries(response.headers.entries()));
+
+            if (response.ok) {
+                const data = await response.json();
+                console.log('Verification response:', data);
+
+                if (data.status === 'success') {
+                    console.log('Token valid, redirecting to dashboard...');
+                    // User is logged in, redirect to dashboard immediately
+                    window.location.href = 'dashboard.php';
+                    return true; // Indicate redirect happened
+                } else {
+                    console.log('Token verification failed:', data.message);
+                }
+            } else {
+                console.log('Verification request failed with status:', response.status);
+                const errorText = await response.text();
+                console.log('Error response body:', errorText);
             }
-        } else {
-            console.log('Token expired, clearing...');
+        } catch (error) {
+            console.error('Token verification error:', error);
+            console.error('Error details:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            });
         }
 
-        // Token expired or invalid, clear it
+        // Token invalid, clear it
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
-        localStorage.removeItem('token_expires_at');
         localStorage.removeItem('user_data');
     } else {
         console.log('No tokens found');
@@ -1957,7 +1944,6 @@ async function handleLogin(event) {
          localStorage.setItem('user_data', JSON.stringify(data.user));
 
          console.log('Tokens stored successfully');
-         console.log('Current time:', Date.now());
 
          // Set token in HTTP-only cookie for secure session establishment
          // Remove 'secure' flag for localhost development, increase expiry to 24 hours
