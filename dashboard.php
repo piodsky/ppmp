@@ -1,9 +1,12 @@
 <?php
-// Token-based authentication - no session dependency
-require_once "../apiPPMP/config.php";
-require_once "../apiPPMP/token_helper.php";
+require_once __DIR__ . '/../vendor/autoload.php'; // Autoload dependencies
+use Dotenv\Dotenv;
 
-TokenHelper::init($conn);
+// Load .env variables
+$dotenv = Dotenv::createImmutable(__DIR__ . '/../apiPPMP');
+$dotenv->load();
+
+// Token-based authentication - API calls instead of local includes
 
 // Check for token in cookie or Authorization header
 $token = null;
@@ -24,21 +27,39 @@ if (!$token) {
     exit();
 }
 
-// Validate token
-$validation = TokenHelper::validateToken($token);
-if (!$validation['valid']) {
+// Validate token via API call
+$apiUrl = $_ENV['API_BASE_URL'] . '/api_verify_token.php';
+$context = stream_context_create([
+    'http' => [
+        'method' => 'POST',
+        'header' => [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . $token
+        ],
+        'timeout' => 10
+    ]
+]);
+
+$response = file_get_contents($apiUrl, false, $context);
+if ($response === false) {
     header("Location: login.php");
     exit();
 }
 
-// Set user data from token validation
-$user_id = $validation['user_id'];
-$username = $validation['username'];
-$firstname = $validation['firstname'];
-$lastname = $validation['lastname'];
-$role = $validation['role'];
-$department = $validation['department'];
-$profile_picture = $validation['profile_picture'] ?? ''; // Get profile picture from token validation
+$data = json_decode($response, true);
+if (!$data || $data['status'] !== 'success') {
+    header("Location: login.php");
+    exit();
+}
+
+// Set user data from API response
+$user_id = $data['user']['id'];
+$username = $data['user']['username'];
+$firstname = $data['user']['firstname'];
+$lastname = $data['user']['lastname'];
+$role = $data['user']['role'];
+$department = $data['user']['department'];
+$profile_picture = $data['user']['profile_picture'] ?? '';
 ?>
 
 <!DOCTYPE html>

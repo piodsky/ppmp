@@ -7,7 +7,7 @@ header('Pragma: public');
 // Prevent any HTML output
 ob_start();
 
-require_once "../config.php";
+require_once "../apiPPMP/config.php";
 require_once "../apiPPMP/token_helper.php";
 
 TokenHelper::init($conn);
