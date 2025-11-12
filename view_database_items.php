@@ -7,9 +7,6 @@ use Dotenv\Dotenv;
 $dotenv = Dotenv::createImmutable(__DIR__ . '/../apiPPMP');
 $dotenv->load();
 
-// Include database configuration for direct database access
-require_once __DIR__ . '/../apiPPMP/config.php';
-
 // Check for token in cookie or Authorization header
 $token = null;
 
@@ -66,17 +63,6 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
 // Set user data for JavaScript
 $user = $username;
 $user_role = $role;
-
-// Load items directly from database
-try {
-    $stmt = $conn->prepare("SELECT ID, Item_Code, Item_Name, Items_Description, Unit, Unit_Cost, Category FROM tbl_ppmp_bac_items ORDER BY Item_Code ASC");
-    $stmt->execute();
-    $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    error_log("Loaded " . count($items) . " items from database");
-} catch (PDOException $e) {
-    $items = [];
-    error_log("Error loading items: " . $e->getMessage());
-}
 ?>
 
 <!DOCTYPE html>
@@ -125,6 +111,32 @@ try {
         })
         .catch(error => {
             console.error('Error loading items directly:', error);
+            return [];
+        });
+    }
+
+    // Search items function
+    function searchItems(searchParams) {
+        const queryString = new URLSearchParams(searchParams).toString();
+        return fetch(`search_items.php?${queryString}`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.items) {
+                searchResults = data.items;
+                console.log('Search found', searchResults.length, 'items');
+                return searchResults;
+            } else {
+                console.error('Search failed:', data.error);
+                return [];
+            }
+        })
+        .catch(error => {
+            console.error('Error searching items:', error);
             return [];
         });
     }
@@ -550,7 +562,7 @@ try {
                 <button class="btn btn-outline-secondary" id="themeToggle" title="Toggle Theme">
                     <i class="fas fa-moon" id="themeIcon"></i>
                 </button>
-                <button class="btn btn-info" onclick="loadItems()">
+                <button class="btn btn-info" id="refreshBtn" onclick="refreshData()">
                     <i class="fas fa-sync"></i> Refresh
                 </button>
             </div>
@@ -558,23 +570,52 @@ try {
 
         <!-- Search and Filters -->
         <div class="search-container">
-            <div class="row">
-                <div class="col-md-8">
-                    <input type="text" id="searchInput" class="form-control" placeholder="Search by item name, description, or category..." style="max-width: 100%;">
+            <div class="row mb-3">
+                <div class="col-md-12">
+                    <h6 class="text-primary mb-3"><i class="fas fa-search me-2"></i>Search Items</h6>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">Item Name</label>
+                    <input type="text" id="searchItemName" class="form-control" placeholder="Enter item name...">
                 </div>
                 <div class="col-md-4">
+                    <label class="form-label">Description</label>
+                    <input type="text" id="searchDescription" class="form-control" placeholder="Enter description...">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Category</label>
+                    <input type="text" id="searchCategory" class="form-control" placeholder="Enter category...">
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
                     <div class="d-flex align-items-center gap-2">
                         <label class="form-label mb-0">Show:</label>
-                        <select class="form-select" id="itemsPerPage" style="width: auto;">
+                        <select class="form-select" id="itemsPerPage" style="width: auto;" disabled>
                             <option value="25">25</option>
                             <option value="50" selected>50</option>
                             <option value="100">100</option>
                             <option value="200">200</option>
                         </select>
-                        <span class="badge bg-primary fs-6 px-3 py-2">
+                        <span class="badge bg-secondary fs-6 px-3 py-2">
                             <i class="fas fa-database me-1"></i>
                             <span id="totalCount">0</span> items
                         </span>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="d-flex justify-content-end gap-2">
+                        <button class="btn btn-primary" id="searchBtn">
+                            <i class="fas fa-search me-1"></i>Search
+                        </button>
+                        <button class="btn btn-secondary" id="clearBtn">
+                            <i class="fas fa-eraser me-1"></i>Clear
+                        </button>
+                        <button class="btn btn-success" id="viewAllBtn">
+                            <i class="fas fa-list me-1"></i>View All Items
+                        </button>
                     </div>
                 </div>
             </div>
@@ -598,7 +639,14 @@ try {
                             </tr>
                         </thead>
                         <tbody id="itemsTableBody">
-                            <!-- Items will be loaded here -->
+                            <tr>
+                                <td colspan="8" class="text-center py-5">
+                                    <i class="fas fa-info-circle fa-3x text-info mb-3"></i>
+                                    <h5 class="text-info">Ready to Load Items</h5>
+                                    <p class="text-muted mb-3">Click "View All Items" to display all database items, or use the search box above to find specific items.</p>
+                                    <small class="text-muted">Items are loaded on-demand to improve page performance.</small>
+                                </td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
@@ -660,8 +708,88 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Function to update total count
 function updateTotalCount() {
-  const currentTotal = isSearching ? filteredItems.length : totalItems;
-  document.getElementById('totalCount').textContent = currentTotal;
+   const currentTotal = isSearching ? filteredItems.length : totalItems;
+   document.getElementById('totalCount').textContent = currentTotal;
+}
+
+// Function to enable/disable controls
+function enableControls(enabled = true) {
+    const itemsPerPage = document.getElementById('itemsPerPage');
+    const viewAllBtn = document.getElementById('viewAllBtn');
+
+    // Search fields are always enabled
+    if (itemsPerPage) itemsPerPage.disabled = !enabled;
+    if (viewAllBtn) {
+        viewAllBtn.disabled = enabled; // Disable View All when items are loaded
+        if (enabled) {
+            viewAllBtn.innerHTML = '<i class="fas fa-check me-1"></i>Items Loaded';
+            viewAllBtn.classList.remove('btn-success');
+            viewAllBtn.classList.add('btn-secondary');
+        } else {
+            viewAllBtn.innerHTML = '<i class="fas fa-list me-1"></i>View All Items';
+            viewAllBtn.classList.remove('btn-secondary');
+            viewAllBtn.classList.add('btn-success');
+        }
+    }
+}
+
+// Function to handle View All button click
+function handleViewAll() {
+    const viewAllBtn = document.getElementById('viewAllBtn');
+
+    // If items are already loaded, clear them and reset
+    if (allItems.length > 0) {
+        clearItems();
+        return;
+    }
+
+    // Show loading state
+    const tableBody = document.getElementById('itemsTableBody');
+    tableBody.innerHTML = `
+        <tr>
+            <td colspan="8" class="text-center py-4">
+                <i class="fas fa-spinner fa-spin fa-2x"></i>
+                <p class="mt-2">Loading all items...</p>
+            </td>
+        </tr>
+    `;
+
+    // Disable button during loading
+    if (viewAllBtn) {
+        viewAllBtn.disabled = true;
+        viewAllBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Loading...';
+    }
+
+    // Load items
+    loadItemsDirectly().then(() => {
+        currentMode = 'view_all';
+        loadItems();
+        enableControls(true);
+    }).catch(error => {
+        console.error('Error loading items:', error);
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="8" class="text-center py-4">
+                    <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
+                    <h5 class="text-danger">Error Loading Items</h5>
+                    <p class="text-muted">Failed to load items. Please try again.</p>
+                    <button class="btn btn-primary" onclick="handleViewAll()">Retry</button>
+                </td>
+            </tr>
+        `;
+        // Reset button state
+        if (viewAllBtn) {
+            viewAllBtn.disabled = false;
+            viewAllBtn.innerHTML = '<i class="fas fa-list me-1"></i>View All Items';
+            viewAllBtn.classList.remove('btn-secondary');
+            viewAllBtn.classList.add('btn-success');
+        }
+    });
+}
+
+// Function to clear loaded items and reset to initial state
+function clearItems() {
+    resetToInitialState();
 }
 
 // Function to show error messages
@@ -680,20 +808,54 @@ function showError(message) {
 
 // Function to show messages
 function showMessage(message, type) {
-  // Create a temporary message container
-  const container = document.createElement('div');
-  container.innerHTML = `
-    <div class="alert alert-${type} alert-dismissible fade show position-fixed" role="alert" style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;">
-      ${message}
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-  `;
-  document.body.appendChild(container);
+    // Create a temporary message container
+    const container = document.createElement('div');
+    container.innerHTML = `
+        <div class="alert alert-${type} alert-dismissible fade show position-fixed" role="alert" style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    document.body.appendChild(container);
 
-  // Auto-hide after 5 seconds
-  setTimeout(() => {
-    container.remove();
-  }, 5000);
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+        try {
+            container.remove();
+        } catch (error) {
+            console.warn('Error removing message container:', error);
+        }
+    }, 5000);
+}
+
+// Function to clean up modal instances
+function cleanupModals() {
+    try {
+        // Only clean up if there are actual modals showing
+        const visibleModals = document.querySelectorAll('.modal.show');
+        if (visibleModals.length === 0) {
+            // Clean up any lingering modal backdrops only if no modals are visible
+            const backdrops = document.querySelectorAll('.modal-backdrop');
+            backdrops.forEach(backdrop => {
+                try {
+                    if (backdrop.parentNode) {
+                        backdrop.remove();
+                    }
+                } catch (error) {
+                    console.warn('Error removing modal backdrop:', error);
+                }
+            });
+
+            // Reset body classes only if safe to do so
+            if (!document.body.classList.contains('modal-open') || visibleModals.length === 0) {
+                document.body.classList.remove('modal-open');
+                document.body.style.overflow = '';
+                document.body.style.paddingRight = '';
+            }
+        }
+    } catch (error) {
+        console.warn('Error in modal cleanup:', error);
+    }
 }
 </script>
 
@@ -732,11 +894,15 @@ function getCurrentUserRole() {
 // Global variables for items management
 let allItems = [];
 let filteredItems = [];
+let searchResults = [];
 let currentPage = 1;
 let itemsPerPage = 50;
 let totalPages = 1;
 let totalItems = 0;
 let isSearching = false;
+let currentMode = 'none'; // 'none', 'view_all', 'search'
+let lastSearchCriteria = {}; // Store last search criteria for refresh
+let searchInProgress = false; // Prevent multiple simultaneous searches
 
 // Theme Management
 class DatabaseViewerThemeManager {
@@ -760,10 +926,7 @@ class DatabaseViewerThemeManager {
         this.applyTheme(this.currentTheme);
         this.setupToggle();
         this.updateToggleIcon();
-        // Load items after ensuring data is available
-        loadItemsDirectly().then(() => {
-            loadItems();
-        });
+        // Items will be loaded on-demand when user clicks "View All" or searches
     }
 
     setupToggle() {
@@ -843,7 +1006,7 @@ function loadItems(page = 1) {
             console.log('Items loaded successfully:', totalItems, 'items');
         } else {
             console.log('No items data available - checking if loadItemsDirectly was called');
-            showError('No items data available. Please refresh the page.');
+            showError('No items data available. Please try again.');
         }
     } catch (error) {
         console.error('Error loading items:', error);
@@ -867,18 +1030,26 @@ function displayItems(items, isFiltered = false) {
         return;
     }
 
-    tableBody.innerHTML = '';
+    // Build the entire table content first
+    let tableContent = '';
 
     items.forEach((item, index) => {
         const itemNumber = isFiltered ? index + 1 : (currentPage - 1) * itemsPerPage + index + 1;
 
+        // Escape special characters in strings to prevent issues
+        const safeItemCode = (item.Item_Code || '').replace(/'/g, "\\'");
+        const safeItemName = (item.Item_Name || 'N/A').replace(/'/g, "\\'");
+        const safeDescription = (item.Items_Description || '').replace(/'/g, "\\'");
+        const safeUnit = (item.Unit || '').replace(/'/g, "\\'");
+        const safeCategory = (item.Category || 'N/A').replace(/'/g, "\\'");
+
         let actions = '';
         if (userRole === 'admin') {
             actions = `
-                <button class="btn btn-custom btn-edit me-1" onclick="editItem(${item.ID}, '${item.Item_Code}', '${item.Item_Name}', '${item.Items_Description}', '${item.Unit}', ${item.Unit_Cost}, '${item.Category}')">
+                <button class="btn btn-custom btn-edit me-1" onclick="editItem(${item.ID}, '${safeItemCode}', '${safeItemName}', '${safeDescription}', '${safeUnit}', ${item.Unit_Cost}, '${safeCategory}')">
                     <i class="fas fa-edit"></i> Edit
                 </button>
-                <button class="btn btn-custom btn-delete" onclick="deleteItem(${item.ID}, '${item.Item_Code}')">
+                <button class="btn btn-custom btn-delete" onclick="deleteItem(${item.ID}, '${safeItemCode}')">
                     <i class="fas fa-trash"></i> Delete
                 </button>
             `;
@@ -886,7 +1057,7 @@ function displayItems(items, isFiltered = false) {
             actions = '<span class="text-muted">No actions</span>';
         }
 
-        tableBody.innerHTML += `
+        tableContent += `
             <tr>
                 <td>${itemNumber}</td>
                 <td><span class="item-code">${item.Item_Code}</span></td>
@@ -899,31 +1070,334 @@ function displayItems(items, isFiltered = false) {
             </tr>
         `;
     });
+
+    // Set the table content in one operation to avoid DOM conflicts
+    tableBody.innerHTML = tableContent;
 }
 
-function filterItems() {
-    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-    if (searchTerm === '') {
-        isSearching = false;
-        filteredItems = allItems;
-        totalPages = Math.ceil(allItems.length / itemsPerPage);
-        currentPage = 1;
-        displayItems(allItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage));
-        updatePaginationControls();
-        updateTotalCount();
-    } else {
-        isSearching = true;
-        filteredItems = allItems.filter(item =>
-            item.Item_Name.toLowerCase().includes(searchTerm) ||
-            item.Items_Description.toLowerCase().includes(searchTerm) ||
-            (item.Category && item.Category.toLowerCase().includes(searchTerm))
-        );
-        totalPages = Math.ceil(filteredItems.length / itemsPerPage);
-        currentPage = 1;
-        displayItems(filteredItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage), true);
-        updatePaginationControls();
-        updateTotalCount();
+function performSearch() {
+    // Prevent multiple simultaneous searches
+    if (searchInProgress) {
+        console.log('Search already in progress, ignoring duplicate request');
+        return;
     }
+
+    // Get search parameters
+    const itemName = document.getElementById('searchItemName').value.trim();
+    const description = document.getElementById('searchDescription').value.trim();
+    const category = document.getElementById('searchCategory').value.trim();
+
+    // Check if at least one search field has content
+    if (!itemName && !description && !category) {
+        showMessage('Please enter at least one search criteria', 'warning');
+        return;
+    }
+
+    // Set search in progress flag
+    searchInProgress = true;
+
+    // Show loading state
+    const tableBody = document.getElementById('itemsTableBody');
+    tableBody.innerHTML = `
+        <tr>
+            <td colspan="8" class="text-center py-4">
+                <i class="fas fa-search fa-spin fa-2x"></i>
+                <p class="mt-2">Searching items...</p>
+            </td>
+        </tr>
+    `;
+
+    // Disable search button during search
+    const searchBtn = document.getElementById('searchBtn');
+    const originalText = searchBtn.innerHTML;
+    searchBtn.disabled = true;
+    searchBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Searching...';
+
+    // Perform search with retry logic
+    const performSearchWithRetry = (retryCount = 0) => {
+        const searchParams = {};
+        if (itemName) searchParams.item_name = itemName;
+        if (description) searchParams.description = description;
+        if (category) searchParams.category = category;
+
+        // Store search criteria for refresh
+        lastSearchCriteria = { ...searchParams };
+
+        // Temporarily suppress errors during search operations
+        const originalOnError = window.onerror;
+        let errorSuppressed = false;
+
+        window.onerror = function(message, source, lineno, colno, error) {
+            // Suppress argon-dashboard modal cleanup errors
+            if (message && message.includes && message.includes('removeChild')) {
+                errorSuppressed = true;
+                return true;
+            }
+            // Call original handler for other errors
+            if (originalOnError) {
+                return originalOnError(message, source, lineno, colno, error);
+            }
+            return false;
+        };
+
+        return searchItems(searchParams).then(results => {
+            if (results.length > 0) {
+                currentMode = 'search';
+                // Display search results
+                allItems = results;
+                filteredItems = results;
+                totalItems = results.length;
+                totalPages = Math.ceil(totalItems / itemsPerPage);
+                currentPage = 1;
+                isSearching = true;
+
+                displayItems(results.slice(0, itemsPerPage), true);
+                updatePaginationControls();
+                updateTotalCount();
+                enableControls(true);
+
+                showMessage(`Found ${results.length} items matching your search criteria`, 'success');
+            } else {
+                // No results found
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="8" class="text-center py-4">
+                            <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">No Items Found</h5>
+                            <p class="text-muted">No items match your search criteria. Try different keywords.</p>
+                            <button class="btn btn-primary" onclick="clearSearch()">Clear Search</button>
+                        </td>
+                    </tr>
+                `;
+                updateTotalCount();
+            }
+    }).catch(error => {
+        console.error('Search error:', error);
+
+        // Check if this is a connection timeout and we haven't exceeded retry limit
+        if (retryCount < 2 && (error.message && error.message.includes('timeout'))) {
+            console.log(`Search timeout, retrying... (${retryCount + 1}/3)`);
+
+            // Update loading message
+            const tableBody = document.getElementById('itemsTableBody');
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="text-center py-4">
+                        <i class="fas fa-spinner fa-spin fa-2x"></i>
+                        <p class="mt-2">Connection timeout, retrying search... (${retryCount + 1}/3)</p>
+                    </td>
+                </tr>
+            `;
+
+            // Wait 1 second then retry
+            setTimeout(() => {
+                performSearchWithRetry(retryCount + 1);
+            }, 1000);
+            return;
+        }
+
+        // Final failure or non-timeout error
+        const tableBody = document.getElementById('itemsTableBody');
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="8" class="text-center py-4">
+                    <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
+                    <h5 class="text-danger">Search Error</h5>
+                    <p class="text-muted">${error.message && error.message.includes('timeout') ? 'Connection timeout. Please check your database connection.' : 'Failed to perform search. Please try again.'}</p>
+                    <button class="btn btn-primary" onclick="performSearch()">Retry Search</button>
+                </td>
+            </tr>
+        `;
+    }).finally(() => {
+        // Re-enable search button
+        searchBtn.disabled = false;
+        searchBtn.innerHTML = originalText;
+
+        // Clear search in progress flag
+        searchInProgress = false;
+
+        // Restore original error handler
+        setTimeout(() => {
+            window.onerror = originalOnError;
+        }, 100);
+    });
+    };
+
+    // Call the retry function
+    performSearchWithRetry();
+}
+
+function clearSearch() {
+    // Clear search fields
+    document.getElementById('searchItemName').value = '';
+    document.getElementById('searchDescription').value = '';
+    document.getElementById('searchCategory').value = '';
+
+    // Reset to initial "Ready to Load Items" state
+    resetToInitialState();
+}
+
+// Function to refresh data based on current mode
+function refreshData() {
+    const refreshBtn = document.getElementById('refreshBtn');
+
+    // Check if there's anything to refresh
+    if (currentMode === 'none') {
+        showMessage('Nothing to refresh. Use "View All Items" or search first.', 'info');
+        return;
+    }
+
+    // Disable button during refresh
+    const originalText = refreshBtn.innerHTML;
+    refreshBtn.disabled = true;
+    refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Refreshing...';
+
+    try {
+        if (currentMode === 'view_all') {
+            // Refresh all items
+            refreshAllItems().then(() => {
+                showMessage('All items refreshed successfully!', 'success');
+            }).catch(error => {
+                console.error('Refresh error:', error);
+                showMessage('Failed to refresh items. Please try again.', 'danger');
+            });
+        } else if (currentMode === 'search') {
+            // Re-run the last search
+            refreshSearchResults().then(() => {
+                showMessage('Search results refreshed successfully!', 'success');
+            }).catch(error => {
+                console.error('Refresh error:', error);
+                showMessage('Failed to refresh search results. Please try again.', 'danger');
+            });
+        }
+    } catch (error) {
+        console.error('Refresh error:', error);
+        showMessage('An error occurred during refresh.', 'danger');
+    } finally {
+        // Re-enable button
+        setTimeout(() => {
+            refreshBtn.disabled = false;
+            refreshBtn.innerHTML = originalText;
+        }, 1000); // Keep disabled for a moment to prevent spam clicking
+    }
+}
+
+// Function to refresh all items
+function refreshAllItems() {
+    return new Promise((resolve, reject) => {
+        // Show loading state
+        const tableBody = document.getElementById('itemsTableBody');
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="8" class="text-center py-4">
+                    <i class="fas fa-sync fa-spin fa-2x"></i>
+                    <p class="mt-2">Refreshing all items...</p>
+                </td>
+            </tr>
+        `;
+
+        // Reload items from database
+        loadItemsDirectly().then(() => {
+            loadItems();
+            resolve();
+        }).catch(error => {
+            reject(error);
+        });
+    });
+}
+
+// Function to refresh search results
+function refreshSearchResults() {
+    return new Promise((resolve, reject) => {
+        // Check if we have search criteria
+        if (!lastSearchCriteria || Object.keys(lastSearchCriteria).length === 0) {
+            reject(new Error('No search criteria to refresh'));
+            return;
+        }
+
+        // Show loading state
+        const tableBody = document.getElementById('itemsTableBody');
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="8" class="text-center py-4">
+                    <i class="fas fa-sync fa-spin fa-2x"></i>
+                    <p class="mt-2">Refreshing search results...</p>
+                </td>
+            </tr>
+        `;
+
+        // Re-run search with last criteria
+        searchItems(lastSearchCriteria).then(results => {
+            if (results.length > 0) {
+                allItems = results;
+                filteredItems = results;
+                totalItems = results.length;
+                totalPages = Math.ceil(totalItems / itemsPerPage);
+                currentPage = 1;
+
+                displayItems(results.slice(0, itemsPerPage), true);
+                updatePaginationControls();
+                updateTotalCount();
+            } else {
+                // No results found
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="8" class="text-center py-4">
+                            <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">No Items Found</h5>
+                            <p class="text-muted">No items match your search criteria after refresh.</p>
+                        </td>
+                    </tr>
+                `;
+                updateTotalCount();
+            }
+            resolve();
+        }).catch(error => {
+            reject(error);
+        });
+    });
+}
+
+function resetToInitialState() {
+    // Clean up any modal instances
+    cleanupModals();
+
+    // Reset all variables
+    allItems = [];
+    filteredItems = [];
+    searchResults = [];
+    currentPage = 1;
+    totalPages = 1;
+    totalItems = 0;
+    isSearching = false;
+    currentMode = 'none';
+    lastSearchCriteria = {};
+
+    // Reset table to initial state
+    const tableBody = document.getElementById('itemsTableBody');
+    tableBody.innerHTML = `
+        <tr>
+            <td colspan="8" class="text-center py-5">
+                <i class="fas fa-info-circle fa-3x text-info mb-3"></i>
+                <h5 class="text-info">Ready to Load Items</h5>
+                <p class="text-muted mb-3">Click "View All Items" to display all database items, or use the search box above to find specific items.</p>
+                <small class="text-muted">Items are loaded on-demand to improve page performance.</small>
+            </td>
+        </tr>
+    `;
+
+    // Clear pagination
+    const paginationControls = document.getElementById('paginationControls');
+    if (paginationControls) paginationControls.innerHTML = '';
+
+    // Reset controls to initial state
+    enableControls(false);
+
+    // Update total count
+    updateTotalCount();
+
+    // Show success message
+    showMessage('Search cleared. Ready to search or load items.', 'info');
 }
 
 function updateTotalCount() {
@@ -932,6 +1406,23 @@ function updateTotalCount() {
 }
 
 function editItem(id, code, name, description, unit, cost, category) {
+    // Ensure modal exists
+    const modalElement = document.getElementById('editItemModal');
+    if (!modalElement) {
+        console.error('Edit modal not found');
+        return;
+    }
+
+    // Dispose of any existing modal instance to prevent conflicts
+    try {
+        const existingModal = bootstrap.Modal.getInstance(modalElement);
+        if (existingModal) {
+            existingModal.dispose();
+        }
+    } catch (error) {
+        console.warn('Error disposing existing modal:', error);
+    }
+
     document.getElementById('editItemId').value = id;
     document.getElementById('editItemCode').value = code;
     document.getElementById('editItemName').value = name || '';
@@ -940,8 +1431,16 @@ function editItem(id, code, name, description, unit, cost, category) {
     document.getElementById('editUnitCost').value = cost;
     document.getElementById('editCategory').value = category || '';
 
-    const modal = new bootstrap.Modal(document.getElementById('editItemModal'));
-    modal.show();
+    try {
+        const modal = new bootstrap.Modal(modalElement, {
+            backdrop: true,
+            keyboard: true,
+            focus: true
+        });
+        modal.show();
+    } catch (error) {
+        console.error('Error showing edit modal:', error);
+    }
 }
 
 function deleteItem(itemId, itemCode) {
@@ -1058,39 +1557,73 @@ const modalsHTML = `
 </div>
 `;
 
-// Insert modals into body
-document.body.insertAdjacentHTML('beforeend', modalsHTML);
 
 // Edit Item Functions
-document.getElementById('saveEditBtn').addEventListener('click', function() {
-    const formData = {
-        id: document.getElementById('editItemId').value,
-        item_code: document.getElementById('editItemCode').value,
-        item_name: document.getElementById('editItemName').value,
-        item_description: document.getElementById('editDescription').value,
-        unit: document.getElementById('editUnit').value,
-        unit_cost: document.getElementById('editUnitCost').value,
-        category: document.getElementById('editCategory').value
-    };
+document.addEventListener('DOMContentLoaded', function() {
+    const saveEditBtn = document.getElementById('saveEditBtn');
+    if (saveEditBtn) {
+        saveEditBtn.addEventListener('click', function() {
+            const formData = {
+                id: document.getElementById('editItemId').value,
+                item_code: document.getElementById('editItemCode').value,
+                item_name: document.getElementById('editItemName').value,
+                item_description: document.getElementById('editDescription').value,
+                unit: document.getElementById('editUnit').value,
+                unit_cost: document.getElementById('editUnitCost').value,
+                category: document.getElementById('editCategory').value
+            };
 
-    authenticatedFetch(`${API_BASE_URL}/api_update_ppmp_item.php`, {
-        method: 'POST',
-        body: JSON.stringify(formData)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showMessage(data.message, 'success');
-            bootstrap.Modal.getInstance(document.getElementById('editItemModal')).hide();
-            loadItems();
-        } else {
-            showMessage('Error: ' + data.message, 'danger');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        showMessage('Network error occurred.', 'danger');
-    });
+            authenticatedFetch(`${API_BASE_URL}/api_update_ppmp_item.php`, {
+                method: 'POST',
+                body: JSON.stringify(formData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showMessage(data.message, 'success');
+                    try {
+                        const modalElement = document.getElementById('editItemModal');
+                        if (modalElement) {
+                            const modal = bootstrap.Modal.getInstance(modalElement);
+                            if (modal) {
+                                modal.hide();
+                                // Clean up modal instance after hiding with longer delay
+                                setTimeout(() => {
+                                    try {
+                                        if (modalElement && !modalElement.classList.contains('show')) {
+                                            modal.dispose();
+                                        }
+                                    } catch (disposeError) {
+                                        console.warn('Error disposing modal:', disposeError);
+                                    }
+                                }, 500); // Wait longer for hide animation and any cleanup
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error hiding modal:', error);
+                        // Fallback: force hide the modal
+                        try {
+                            const modalElement = document.getElementById('editItemModal');
+                            if (modalElement) {
+                                modalElement.style.display = 'none';
+                                modalElement.classList.remove('show');
+                                document.body.classList.remove('modal-open');
+                            }
+                        } catch (fallbackError) {
+                            console.warn('Fallback modal hide also failed:', fallbackError);
+                        }
+                    }
+                    loadItems();
+                } else {
+                    showMessage('Error: ' + data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showMessage('Network error occurred.', 'danger');
+            });
+        });
+    }
 });
 
 // Pagination Functions
@@ -1177,10 +1710,42 @@ document.getElementById('itemsPerPage').addEventListener('change', function() {
 });
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Clean up any existing modals first
+    cleanupModals();
+
+    // Insert modals into body
+    document.body.insertAdjacentHTML('beforeend', modalsHTML);
+
     // Wait for all elements to be loaded
     setTimeout(() => {
         new DatabaseViewerThemeManager();
-        document.getElementById('searchInput').addEventListener('input', filterItems);
+
+        // Add event listeners
+        const viewAllBtn = document.getElementById('viewAllBtn');
+        const searchBtn = document.getElementById('searchBtn');
+        const clearBtn = document.getElementById('clearBtn');
+
+        if (viewAllBtn) {
+            viewAllBtn.addEventListener('click', handleViewAll);
+        }
+        if (searchBtn) {
+            searchBtn.addEventListener('click', performSearch);
+        }
+        if (clearBtn) {
+            clearBtn.addEventListener('click', clearSearch);
+        }
+
+        // Allow Enter key to trigger search from any input field
+        ['searchItemName', 'searchDescription', 'searchCategory'].forEach(fieldId => {
+            const field = document.getElementById(fieldId);
+            if (field) {
+                field.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        performSearch();
+                    }
+                });
+            }
+        });
     }, 100);
 });
 </script>
