@@ -27,8 +27,8 @@ try {
         throw new Exception('Database connection failed');
     }
 
-    // Set PDO attributes for better timeout handling
-    $conn->setAttribute(PDO::ATTR_TIMEOUT, 10); // 10 second timeout
+    // Note: PDO::ATTR_TIMEOUT may not be supported by all drivers
+    // Removed setAttribute(PDO::ATTR_TIMEOUT) to avoid driver errors
 
     // Test connection with a simple query
     $testStmt = $conn->prepare("SELECT 1");
@@ -74,11 +74,8 @@ try {
 
     $whereClause = "WHERE " . implode(" AND ", $whereConditions);
 
-    // Execute search query with timeout handling
+    // Execute search query
     $stmt = $conn->prepare("SELECT ID, Item_Code, Item_Name, Items_Description, Unit, Unit_Cost, Category FROM tbl_ppmp_bac_items {$whereClause} ORDER BY Item_Code ASC");
-
-    // Set query timeout
-    $stmt->setAttribute(PDO::ATTR_TIMEOUT, 10);
 
     $stmt->execute($params);
     $items = $stmt->fetchAll(PDO::FETCH_ASSOC);

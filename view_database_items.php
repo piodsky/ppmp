@@ -586,7 +586,10 @@ $user_role = $role;
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Category</label>
-                    <input type="text" id="searchCategory" class="form-control" placeholder="Enter category...">
+                    <select class="form-select" id="searchCategory">
+                        <option value="">All Categories</option>
+                        <!-- Categories will be loaded dynamically -->
+                    </select>
                 </div>
             </div>
             <div class="row">
@@ -826,6 +829,44 @@ function showMessage(message, type) {
             console.warn('Error removing message container:', error);
         }
     }, 5000);
+}
+
+// Function to load categories for the dropdown
+function loadCategories() {
+    return fetch('get_categories.php', {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.categories) {
+            const categorySelect = document.getElementById('searchCategory');
+            if (categorySelect) {
+                // Clear existing options except "All Categories"
+                categorySelect.innerHTML = '<option value="">All Categories</option>';
+
+                // Add category options
+                data.categories.forEach(category => {
+                    const option = document.createElement('option');
+                    option.value = category;
+                    option.textContent = category;
+                    categorySelect.appendChild(option);
+                });
+
+                console.log('Loaded', data.categories.length, 'categories');
+            }
+            return data.categories;
+        } else {
+            console.error('Failed to load categories:', data.error);
+            return [];
+        }
+    })
+    .catch(error => {
+        console.error('Error loading categories:', error);
+        return [];
+    });
 }
 
 // Function to clean up modal instances
@@ -1231,7 +1272,7 @@ function clearSearch() {
     // Clear search fields
     document.getElementById('searchItemName').value = '';
     document.getElementById('searchDescription').value = '';
-    document.getElementById('searchCategory').value = '';
+    document.getElementById('searchCategory').value = ''; // This will select "All Categories"
 
     // Reset to initial "Ready to Load Items" state
     resetToInitialState();
@@ -1720,6 +1761,9 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(() => {
         new DatabaseViewerThemeManager();
 
+        // Load categories for the dropdown
+        loadCategories();
+
         // Add event listeners
         const viewAllBtn = document.getElementById('viewAllBtn');
         const searchBtn = document.getElementById('searchBtn');
@@ -1736,7 +1780,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         // Allow Enter key to trigger search from any input field
-        ['searchItemName', 'searchDescription', 'searchCategory'].forEach(fieldId => {
+        ['searchItemName', 'searchDescription'].forEach(fieldId => {
             const field = document.getElementById(fieldId);
             if (field) {
                 field.addEventListener('keypress', function(e) {
@@ -1746,6 +1790,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             }
         });
+
+        // Allow Enter key for category select (though it's less common)
+        const categorySelect = document.getElementById('searchCategory');
+        if (categorySelect) {
+            categorySelect.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    performSearch();
+                }
+            });
+        }
     }, 100);
 });
 </script>
