@@ -1,5 +1,11 @@
 <?php
 // Manage Pending Items page - API-based authentication
+require_once __DIR__ . '/../vendor/autoload.php';
+use Dotenv\Dotenv;
+
+// Load .env variables
+$dotenv = Dotenv::createImmutable(__DIR__ . '/../apiPPMP');
+$dotenv->load();
 
 // Check for token in cookie or Authorization header
 $token = null;
@@ -21,7 +27,7 @@ if (!$token) {
 }
 
 // Validate token via API call
-$apiUrl = 'https://sakatamalaybalay.com/api/ppmp/api_verify_token.php';
+$apiUrl = $_ENV['API_BASE_URL'] . '/api_verify_token.php';
 $context = stream_context_create([
     'http' => [
         'method' => 'POST',

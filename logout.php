@@ -1,8 +1,21 @@
 <?php
 // Token-based logout - this page clears tokens from database and client-side
-require_once "../apiPPMP/config.php";
-require_once "../apiPPMP/token_helper.php";
+require_once __DIR__ . '/../vendor/autoload.php';
+use Dotenv\Dotenv;
 
+// Load .env variables
+$dotenv = Dotenv::createImmutable(__DIR__ . '/../apiPPMP');
+$dotenv->load();
+
+$host     = $_ENV['DB_HOST'];
+$dbname   = $_ENV['DB_NAME'];
+$username = $_ENV['DB_USER'];
+$password = $_ENV['DB_PASS'];
+
+$conn = new PDO("mysql:host=$host;dbname=$dbname", $username, $password);
+$conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+require_once __DIR__ . "/../apiPPMP/token_helper.php";
 TokenHelper::init($conn);
 
 // Get token from Authorization header or cookie

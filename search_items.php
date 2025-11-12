@@ -12,6 +12,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+require_once __DIR__ . '/../vendor/autoload.php';
+use Dotenv\Dotenv;
+
+// Load .env variables
+$dotenv = Dotenv::createImmutable(__DIR__ . '/../apiPPMP');
+$dotenv->load();
+
 try {
     // Set a reasonable timeout for database operations
     set_time_limit(30); // 30 seconds max execution time
@@ -20,7 +27,13 @@ try {
     ini_set('mysql.connect_timeout', 10);
     ini_set('default_socket_timeout', 15);
 
-    require_once __DIR__ . "/../apiPPMP/config.php";
+    $host     = $_ENV['DB_HOST'];
+    $dbname   = $_ENV['DB_NAME'];
+    $username = $_ENV['DB_USER'];
+    $password = $_ENV['DB_PASS'];
+
+    $conn = new PDO("mysql:host=$host;dbname=$dbname", $username, $password);
+    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
     // Test the connection
     if (!$conn) {
