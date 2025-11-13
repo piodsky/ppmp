@@ -1,5 +1,8 @@
 <?php
 // View Database Items page - PHP-based authentication like dashboard
+set_time_limit(120); // Increase execution time limit
+ini_set('memory_limit', '512M'); // Increase memory limit
+
 require_once __DIR__ . '/../vendor/autoload.php'; // Autoload dependencies
 use Dotenv\Dotenv;
 
@@ -35,7 +38,7 @@ $context = stream_context_create([
             'Content-Type: application/json',
             'Authorization: Bearer ' . $token
         ],
-        'timeout' => 10
+        'timeout' => 60
     ]
 ]);
 
@@ -81,6 +84,8 @@ $user_role = $role;
     <link rel="stylesheet" href="argondashboard/assets/css/nucleo-svg.css">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="assets/font-awesome.min.css">
+    <!-- DataTables CSS -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css">
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
 
@@ -280,51 +285,101 @@ $user_role = $role;
             background: var(--bg-primary);
         }
 
-        /* Mobile responsiveness for View Database Items */
+        /* Compact table styling for better fit */
+        .table {
+            font-size: 0.8rem;
+            margin-bottom: 0;
+            background: var(--bg-primary);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px var(--shadow-color);
+        }
+
+        .table th, .table td {
+            vertical-align: middle;
+            text-align: center;
+            padding: 6px 4px;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border-light);
+            word-wrap: break-word;
+            word-break: break-word;
+            hyphens: auto;
+        }
+
+        .table thead th {
+            background: var(--bg-accent);
+            color: #ffffff !important;
+            border: none;
+            font-weight: 600;
+            padding: 8px 4px;
+            font-size: 0.75rem;
+        }
+
+        .table tbody tr {
+            background: rgba(255,255,255,0.02);
+            transition: background-color 0.3s ease;
+        }
+
+        .table tbody tr:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        /* Flexible column widths that can grow */
+        .table th:nth-child(1), .table td:nth-child(1) { /* ID */
+            min-width: 60px;
+            width: 60px;
+            text-align: center;
+        }
+
+        .table th:nth-child(2), .table td:nth-child(2) { /* Item Code */
+            min-width: 100px;
+        }
+
+        .table th:nth-child(3), .table td:nth-child(3) { /* Item Name */
+            min-width: 150px;
+        }
+
+        .table th:nth-child(4), .table td:nth-child(4) { /* Description */
+            min-width: 200px;
+        }
+
+        .table th:nth-child(5), .table td:nth-child(5) { /* Unit */
+            min-width: 70px;
+            width: 80px;
+        }
+
+        .table th:nth-child(6), .table td:nth-child(6) { /* Unit Cost */
+            min-width: 90px;
+            width: 100px;
+        }
+
+        .table th:nth-child(7), .table td:nth-child(7) { /* Category */
+            min-width: 120px;
+        }
+
+        .table th:nth-child(8), .table td:nth-child(8) { /* Actions */
+            min-width: 110px;
+            width: 120px;
+        }
+
+        /* Responsive adjustments */
         @media (max-width: 1200px) {
-            .table th, .table td {
-                padding: 8px 4px;
-                font-size: 0.85rem;
+            .table th:nth-child(5), .table td:nth-child(5) { /* Description */
+                min-width: 180px;
             }
 
-            .table th:nth-child(1), .table td:nth-child(1) { /* # */
-                width: 50px;
-                min-width: 40px;
-            }
-
-            .table th:nth-child(2), .table td:nth-child(2) { /* Item Code */
-                width: 100px;
-                min-width: 80px;
-            }
-
-            .table th:nth-child(3), .table td:nth-child(3) { /* Item Name */
-                width: 150px;
-                min-width: 120px;
-            }
-
-            .table th:nth-child(4), .table td:nth-child(4) { /* Description */
-                width: 200px;
-                min-width: 150px;
-            }
-
-            .table th:nth-child(5), .table td:nth-child(5) { /* Unit */
-                width: 60px;
-                min-width: 50px;
-            }
-
-            .table th:nth-child(6), .table td:nth-child(6) { /* Unit Cost */
-                width: 90px;
-                min-width: 80px;
-            }
-
-            .table th:nth-child(7), .table td:nth-child(7) { /* Category */
-                width: 120px;
+            .table th:nth-child(8), .table td:nth-child(8) { /* Category */
                 min-width: 100px;
             }
+        }
 
-            .table th:nth-child(8), .table td:nth-child(8) { /* Actions */
-                width: 100px;
-                min-width: 90px;
+        @media (max-width: 992px) {
+            .table th:nth-child(4), .table td:nth-child(4) { /* Item Name */
+                min-width: 130px;
+            }
+
+            .table th:nth-child(5), .table td:nth-child(5) { /* Description */
+                min-width: 150px;
             }
         }
 
@@ -334,210 +389,190 @@ $user_role = $role;
                 padding: 1rem !important;
             }
 
+            .container-fluid {
+                padding: 0.5rem;
+            }
+
             .d-flex.justify-content-between.align-items-center.mb-4 {
                 flex-direction: column;
-                gap: 1rem;
+                gap: 0.5rem;
                 text-align: center;
             }
 
             .d-flex.align-items-center {
                 flex-direction: column;
-                gap: 0.5rem;
+                gap: 0.25rem;
+            }
+
+            .d-flex.align-items-center h3 {
+                font-size: 1.2rem;
+                margin-bottom: 0;
+            }
+
+            .d-flex.align-items-center small {
+                font-size: 0.75rem;
             }
 
             .d-flex.gap-2 {
                 width: 100%;
                 justify-content: center;
+                gap: 0.5rem !important;
             }
 
             .btn {
-                font-size: 0.9rem;
-                padding: 0.5rem 1rem;
-            }
-
-            .search-container {
-                padding: 15px;
-                margin-bottom: 15px;
-            }
-
-            .row .col-md-8, .row .col-md-4 {
-                margin-bottom: 1rem;
-            }
-
-            .row .col-md-8 {
-                order: 2;
-            }
-
-            .row .col-md-4 {
-                order: 1;
-            }
-
-            .table-responsive {
-                font-size: 0.75rem;
-            }
-
-            .table th, .table td {
-                padding: 6px 3px;
-                font-size: 0.75rem;
-            }
-
-            /* Hide less important columns on mobile */
-            .table th:nth-child(4), .table td:nth-child(4), /* Description */
-            .table th:nth-child(7), .table td:nth-child(7) { /* Category */
-                display: none;
-            }
-
-            .table th:nth-child(1), .table td:nth-child(1) { /* # */
-                width: 40px;
-                min-width: 35px;
-            }
-
-            .table th:nth-child(2), .table td:nth-child(2) { /* Item Code */
-                width: 80px;
-                min-width: 70px;
-            }
-
-            .table th:nth-child(3), .table td:nth-child(3) { /* Item Name */
-                width: 120px;
-                min-width: 100px;
-            }
-
-            .table th:nth-child(5), .table td:nth-child(5) { /* Unit */
-                width: 50px;
-                min-width: 45px;
-            }
-
-            .table th:nth-child(6), .table td:nth-child(6) { /* Unit Cost */
-                width: 80px;
-                min-width: 70px;
-            }
-
-            .table th:nth-child(8), .table td:nth-child(8) { /* Actions */
-                width: 80px;
-                min-width: 70px;
-            }
-
-            .btn-custom {
-                font-size: 0.7rem;
-                padding: 4px 6px;
-            }
-
-            .unit-cost {
-                font-size: 0.7rem;
-            }
-
-            .pagination-container {
-                margin-top: 20px;
-            }
-
-            .pagination {
                 font-size: 0.8rem;
-            }
-        }
-
-        @media (max-width: 480px) {
-            main {
-                padding: 0.5rem !important;
-            }
-
-            .container-fluid {
-                padding: 0;
-            }
-
-            .d-flex.justify-content-between.align-items-center.mb-4 {
-                gap: 0.5rem;
-            }
-
-            .d-flex.align-items-center h3 {
-                font-size: 1.3rem;
-            }
-
-            .d-flex.align-items-center small {
-                font-size: 0.8rem;
-            }
-
-            .btn {
-                font-size: 0.85rem;
                 padding: 0.4rem 0.8rem;
             }
 
-            .search-container {
-                margin: 0.5rem;
-                padding: 12px;
-                border-radius: 8px;
-            }
-
-            .form-control {
-                font-size: 0.85rem;
-                padding: 0.5rem;
-            }
-
-            .badge {
-                font-size: 0.75rem;
-                padding: 0.25rem 0.5rem;
-            }
-
-            .card {
-                margin: 0.5rem;
-                border-radius: 8px;
-            }
-
-            .card-body {
-                padding: 1rem;
-            }
-
             .table-responsive {
                 font-size: 0.7rem;
-                border-radius: 6px;
+                overflow-x: auto;
+            }
+
+            .table {
+                min-width: 800px; /* Ensure table doesn't get too compressed */
+                font-size: 0.7rem;
             }
 
             .table th, .table td {
                 padding: 4px 2px;
-                font-size: 0.7rem;
+                font-size: 0.65rem;
             }
 
-            /* Further hide columns on very small screens */
-            .table th:nth-child(3), .table td:nth-child(3), /* Item Name */
-            .table th:nth-child(5), .table td:nth-child(5) { /* Unit */
+            .table thead th {
+                padding: 6px 2px;
+                font-size: 0.65rem;
+            }
+
+            /* Hide less important columns on mobile */
+            .table th:nth-child(5), .table td:nth-child(5), /* Description */
+            .table th:nth-child(8), .table td:nth-child(8) { /* Category */
                 display: none;
             }
 
-            .table th:nth-child(1), .table td:nth-child(1) { /* # */
-                width: 35px;
-                min-width: 30px;
+            .table th:nth-child(1), .table td:nth-child(1) { /* ID */
+                min-width: 50px;
+                width: 50px;
             }
 
-            .table th:nth-child(2), .table td:nth-child(2) { /* Item Code */
-                width: 70px;
-                min-width: 60px;
+            .table th:nth-child(3), .table td:nth-child(3) { /* Item Code */
+                min-width: 90px;
             }
 
-            .table th:nth-child(6), .table td:nth-child(6) { /* Unit Cost */
-                width: 75px;
-                min-width: 65px;
+            .table th:nth-child(4), .table td:nth-child(4) { /* Item Name */
+                min-width: 120px;
             }
 
-            .table th:nth-child(8), .table td:nth-child(8) { /* Actions */
-                width: 70px;
-                min-width: 60px;
+            .table th:nth-child(6), .table td:nth-child(6) { /* Unit */
+                min-width: 55px;
+                width: 60px;
+            }
+
+            .table th:nth-child(7), .table td:nth-child(7) { /* Unit Cost */
+                min-width: 75px;
+                width: 80px;
+            }
+
+            .table th:nth-child(9), .table td:nth-child(9) { /* Actions */
+                min-width: 90px;
+                width: 100px;
             }
 
             .btn-custom {
-                font-size: 0.65rem;
-                padding: 3px 5px;
+                font-size: 0.6rem;
+                padding: 2px 4px;
             }
 
             .unit-cost {
                 font-size: 0.65rem;
             }
+        }
 
-            .pagination {
-                font-size: 0.75rem;
+        @media (max-width: 576px) {
+            main {
+                padding: 0.25rem !important;
             }
 
-            .page-link {
-                padding: 0.25rem 0.5rem;
+            .container-fluid {
+                padding: 0.25rem;
             }
+
+            .d-flex.align-items-center h3 {
+                font-size: 1.1rem;
+            }
+
+            .table {
+                min-width: 700px;
+                font-size: 0.65rem;
+            }
+
+            .table th, .table td {
+                padding: 3px 1px;
+                font-size: 0.6rem;
+            }
+
+            .table thead th {
+                padding: 4px 1px;
+                font-size: 0.6rem;
+            }
+
+            /* Further hide columns on very small screens */
+            .table th:nth-child(4), .table td:nth-child(4) { /* Item Name */
+                display: none;
+            }
+
+            .table th:nth-child(1), .table td:nth-child(1) { /* ID */
+                min-width: 45px;
+                width: 45px;
+            }
+
+            .table th:nth-child(3), .table td:nth-child(3) { /* Item Code */
+                min-width: 80px;
+            }
+
+            .table th:nth-child(6), .table td:nth-child(6) { /* Unit */
+                min-width: 45px;
+                width: 50px;
+            }
+
+            .table th:nth-child(7), .table td:nth-child(7) { /* Unit Cost */
+                min-width: 65px;
+                width: 70px;
+            }
+
+            .table th:nth-child(9), .table td:nth-child(9) { /* Actions */
+                min-width: 75px;
+                width: 80px;
+            }
+
+            .btn-custom {
+                font-size: 0.55rem;
+                padding: 1px 3px;
+            }
+        }
+
+        /* DataTables specific styling */
+        .dataTables_wrapper .dataTables_length,
+        .dataTables_wrapper .dataTables_filter,
+        .dataTables_wrapper .dataTables_info,
+        .dataTables_wrapper .dataTables_paginate {
+            font-size: 0.8rem;
+            margin: 0.5rem 0;
+        }
+
+        .dataTables_wrapper .dataTables_filter input {
+            font-size: 0.8rem;
+            padding: 0.25rem 0.5rem;
+        }
+
+        .dataTables_wrapper .dataTables_length select {
+            font-size: 0.8rem;
+            padding: 0.25rem;
+        }
+
+        .dataTables_wrapper .dataTables_paginate .paginate_button {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
         }
     </style>
 </head>
@@ -546,92 +581,38 @@ $user_role = $role;
 
 <?php include 'sidebar.php'; ?>
 
-<main class="main-content position-relative border-radius-lg ps ps--active-y" style="margin-left: 280px; padding: 1.5rem;">
-    <div class="container-fluid py-4">
-        <div class="d-flex justify-content-between align-items-center mb-4">
+<main class="main-content position-relative border-radius-lg ps ps--active-y" style="margin-left: 280px; padding: 1rem;">
+    <div class="container-fluid py-2">
+        <div class="d-flex justify-content-between align-items-center mb-3">
             <div class="d-flex align-items-center">
-                <img src="assets/logo.svg" alt="PPMP Logo" style="width: 50px; height: 50px; margin-right: 15px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));">
+                <img src="assets/logo.svg" alt="PPMP Logo" style="width: 40px; height: 40px; margin-right: 10px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));">
                 <div>
-                    <h3 class="text-primary mb-0">Database Items</h3>
-                    <small class="text-muted">
+                    <h4 class="text-primary mb-0" style="font-size: 1.25rem;">Database Items</h4>
+                    <small class="text-muted" style="font-size: 0.75rem;">
                         View and manage all items in the database
                     </small>
                 </div>
             </div>
             <div class="d-flex gap-2">
-                <button class="btn btn-outline-secondary" id="themeToggle" title="Toggle Theme">
+                <button class="btn btn-outline-secondary btn-sm" id="themeToggle" title="Toggle Theme">
                     <i class="fas fa-moon" id="themeIcon"></i>
                 </button>
-                <button class="btn btn-info" id="refreshBtn" onclick="refreshData()">
+                <button class="btn btn-info btn-sm" id="refreshBtn" onclick="refreshData()">
                     <i class="fas fa-sync"></i> Refresh
                 </button>
             </div>
         </div>
 
-        <!-- Search and Filters -->
-        <div class="search-container">
-            <div class="row mb-3">
-                <div class="col-md-12">
-                    <h6 class="text-primary mb-3"><i class="fas fa-search me-2"></i>Search Items</h6>
-                </div>
-            </div>
-            <div class="row mb-3">
-                <div class="col-md-4">
-                    <label class="form-label">Item Name</label>
-                    <input type="text" id="searchItemName" class="form-control" placeholder="Enter item name...">
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Description</label>
-                    <input type="text" id="searchDescription" class="form-control" placeholder="Enter description...">
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Category</label>
-                    <select class="form-select" id="searchCategory">
-                        <option value="">All Categories</option>
-                        <!-- Categories will be loaded dynamically -->
-                    </select>
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-6">
-                    <div class="d-flex align-items-center gap-2">
-                        <label class="form-label mb-0">Show:</label>
-                        <select class="form-select" id="itemsPerPage" style="width: auto;" disabled>
-                            <option value="25">25</option>
-                            <option value="50" selected>50</option>
-                            <option value="100">100</option>
-                            <option value="200">200</option>
-                        </select>
-                        <span class="badge bg-secondary fs-6 px-3 py-2">
-                            <i class="fas fa-database me-1"></i>
-                            <span id="totalCount">0</span> items
-                        </span>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="d-flex justify-content-end gap-2">
-                        <button class="btn btn-primary" id="searchBtn">
-                            <i class="fas fa-search me-1"></i>Search
-                        </button>
-                        <button class="btn btn-secondary" id="clearBtn">
-                            <i class="fas fa-eraser me-1"></i>Clear
-                        </button>
-                        <button class="btn btn-success" id="viewAllBtn">
-                            <i class="fas fa-list me-1"></i>View All Items
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <!-- DataTables will handle search and pagination automatically -->
 
         <!-- Items Table -->
         <div class="card shadow">
-            <div class="card-body p-0">
+            <div class="card-body p-2">
                 <div class="table-responsive">
-                    <table class="table table-striped" id="itemsTable">
+                    <table class="table table-striped" id="itemsTable" style="width:100%">
                         <thead>
                             <tr>
-                                <th>#</th>
+                                <th>ID</th>
                                 <th>Item Code</th>
                                 <th>Item Name</th>
                                 <th>Description</th>
@@ -641,29 +622,12 @@ $user_role = $role;
                                 <th>Actions</th>
                             </tr>
                         </thead>
-                        <tbody id="itemsTableBody">
-                            <tr>
-                                <td colspan="8" class="text-center py-5">
-                                    <i class="fas fa-info-circle fa-3x text-info mb-3"></i>
-                                    <h5 class="text-info">Ready to Load Items</h5>
-                                    <p class="text-muted mb-3">Click "View All Items" to display all database items, or use the search box above to find specific items.</p>
-                                    <small class="text-muted">Items are loaded on-demand to improve page performance.</small>
-                                </td>
-                            </tr>
-                        </tbody>
                     </table>
                 </div>
             </div>
         </div>
 
-        <!-- Pagination -->
-        <div class="pagination-container">
-            <nav aria-label="Items pagination">
-                <ul class="pagination" id="paginationControls">
-                    <!-- Pagination buttons will be generated here -->
-                </ul>
-            </nav>
-        </div>
+        <!-- DataTables handles pagination automatically -->
     </div>
 </main>
 
@@ -672,6 +636,11 @@ $user_role = $role;
 <script src="argondashboard/assets/js/plugins/perfect-scrollbar.min.js"></script>
 <script src="argondashboard/assets/js/plugins/smooth-scrollbar.min.js"></script>
 <script src="argondashboard/assets/js/argon-dashboard.min.js"></script>
+
+<!-- DataTables JS -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
 
 <!-- Token Manager for authentication - only include necessary functions -->
 <script>
@@ -702,6 +671,15 @@ function getAccessToken() {
 </script>
 
 <script>
+// Global error handler to suppress argon-dashboard modal errors
+window.addEventListener('error', function(e) {
+    if (e.message && e.message.includes('removeChild')) {
+        e.preventDefault();
+        // Silently suppress the error
+        return false;
+    }
+});
+
 // View Database Items initialization - authentication handled by PHP
 document.addEventListener('DOMContentLoaded', function() {
     console.log('View Database Items page loaded successfully');
@@ -709,195 +687,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 
-// Function to update total count
-function updateTotalCount() {
-   const currentTotal = isSearching ? filteredItems.length : totalItems;
-   document.getElementById('totalCount').textContent = currentTotal;
-}
-
-// Function to enable/disable controls
-function enableControls(enabled = true) {
-    const itemsPerPage = document.getElementById('itemsPerPage');
-    const viewAllBtn = document.getElementById('viewAllBtn');
-
-    // Search fields are always enabled
-    if (itemsPerPage) itemsPerPage.disabled = !enabled;
-    if (viewAllBtn) {
-        viewAllBtn.disabled = enabled; // Disable View All when items are loaded
-        if (enabled) {
-            viewAllBtn.innerHTML = '<i class="fas fa-check me-1"></i>Items Loaded';
-            viewAllBtn.classList.remove('btn-success');
-            viewAllBtn.classList.add('btn-secondary');
-        } else {
-            viewAllBtn.innerHTML = '<i class="fas fa-list me-1"></i>View All Items';
-            viewAllBtn.classList.remove('btn-secondary');
-            viewAllBtn.classList.add('btn-success');
-        }
-    }
-}
-
-// Function to handle View All button click
-function handleViewAll() {
-    const viewAllBtn = document.getElementById('viewAllBtn');
-
-    // If items are already loaded, clear them and reset
-    if (allItems.length > 0) {
-        clearItems();
-        return;
-    }
-
-    // Show loading state
-    const tableBody = document.getElementById('itemsTableBody');
-    tableBody.innerHTML = `
-        <tr>
-            <td colspan="8" class="text-center py-4">
-                <i class="fas fa-spinner fa-spin fa-2x"></i>
-                <p class="mt-2">Loading all items...</p>
-            </td>
-        </tr>
-    `;
-
-    // Disable button during loading
-    if (viewAllBtn) {
-        viewAllBtn.disabled = true;
-        viewAllBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Loading...';
-    }
-
-    // Load items
-    loadItemsDirectly().then(() => {
-        currentMode = 'view_all';
-        loadItems();
-        enableControls(true);
-    }).catch(error => {
-        console.error('Error loading items:', error);
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="8" class="text-center py-4">
-                    <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
-                    <h5 class="text-danger">Error Loading Items</h5>
-                    <p class="text-muted">Failed to load items. Please try again.</p>
-                    <button class="btn btn-primary" onclick="handleViewAll()">Retry</button>
-                </td>
-            </tr>
-        `;
-        // Reset button state
-        if (viewAllBtn) {
-            viewAllBtn.disabled = false;
-            viewAllBtn.innerHTML = '<i class="fas fa-list me-1"></i>View All Items';
-            viewAllBtn.classList.remove('btn-secondary');
-            viewAllBtn.classList.add('btn-success');
-        }
-    });
-}
-
-// Function to clear loaded items and reset to initial state
-function clearItems() {
-    resetToInitialState();
-}
-
-// Function to show error messages
-function showError(message) {
-  const tableBody = document.getElementById('itemsTableBody');
-  tableBody.innerHTML = `
-    <tr>
-      <td colspan="8" class="text-center py-4">
-        <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
-        <h5 class="text-danger">Error</h5>
-        <p class="text-muted">${message}</p>
-      </td>
-    </tr>
-  `;
-}
-
-// Function to show messages
-function showMessage(message, type) {
-    // Create a temporary message container
-    const container = document.createElement('div');
-    container.innerHTML = `
-        <div class="alert alert-${type} alert-dismissible fade show position-fixed" role="alert" style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;">
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    `;
-    document.body.appendChild(container);
-
-    // Auto-hide after 5 seconds
-    setTimeout(() => {
-        try {
-            container.remove();
-        } catch (error) {
-            console.warn('Error removing message container:', error);
-        }
-    }, 5000);
-}
-
-// Function to load categories for the dropdown
-function loadCategories() {
-    return fetch('get_categories.php', {
-        method: 'GET',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success && data.categories) {
-            const categorySelect = document.getElementById('searchCategory');
-            if (categorySelect) {
-                // Clear existing options except "All Categories"
-                categorySelect.innerHTML = '<option value="">All Categories</option>';
-
-                // Add category options
-                data.categories.forEach(category => {
-                    const option = document.createElement('option');
-                    option.value = category;
-                    option.textContent = category;
-                    categorySelect.appendChild(option);
-                });
-
-                console.log('Loaded', data.categories.length, 'categories');
-            }
-            return data.categories;
-        } else {
-            console.error('Failed to load categories:', data.error);
-            return [];
-        }
-    })
-    .catch(error => {
-        console.error('Error loading categories:', error);
-        return [];
-    });
-}
-
-// Function to clean up modal instances
-function cleanupModals() {
-    try {
-        // Only clean up if there are actual modals showing
-        const visibleModals = document.querySelectorAll('.modal.show');
-        if (visibleModals.length === 0) {
-            // Clean up any lingering modal backdrops only if no modals are visible
-            const backdrops = document.querySelectorAll('.modal-backdrop');
-            backdrops.forEach(backdrop => {
-                try {
-                    if (backdrop.parentNode) {
-                        backdrop.remove();
-                    }
-                } catch (error) {
-                    console.warn('Error removing modal backdrop:', error);
-                }
-            });
-
-            // Reset body classes only if safe to do so
-            if (!document.body.classList.contains('modal-open') || visibleModals.length === 0) {
-                document.body.classList.remove('modal-open');
-                document.body.style.overflow = '';
-                document.body.style.paddingRight = '';
-            }
-        }
-    } catch (error) {
-        console.warn('Error in modal cleanup:', error);
-    }
-}
+// DataTables handles all operations automatically
 </script>
 
 <script>
@@ -932,19 +722,6 @@ function getCurrentUserRole() {
     return userData ? userData.role : 'user';
 }
 
-// Global variables for items management
-let allItems = [];
-let filteredItems = [];
-let searchResults = [];
-let currentPage = 1;
-let itemsPerPage = 50;
-let totalPages = 1;
-let totalItems = 0;
-let isSearching = false;
-let currentMode = 'none'; // 'none', 'view_all', 'search'
-let lastSearchCriteria = {}; // Store last search criteria for refresh
-let searchInProgress = false; // Prevent multiple simultaneous searches
-
 // Theme Management
 class DatabaseViewerThemeManager {
     constructor() {
@@ -967,7 +744,6 @@ class DatabaseViewerThemeManager {
         this.applyTheme(this.currentTheme);
         this.setupToggle();
         this.updateToggleIcon();
-        // Items will be loaded on-demand when user clicks "View All" or searches
     }
 
     setupToggle() {
@@ -1015,278 +791,10 @@ class DatabaseViewerThemeManager {
     }
 }
 
-// Load items from database (direct database query instead of API call)
-function loadItems(page = 1) {
-    currentPage = page;
-
-    // Show loading
-    const tableBody = document.getElementById('itemsTableBody');
-    tableBody.innerHTML = `
-        <tr>
-            <td colspan="8" class="text-center py-4">
-                <i class="fas fa-spinner fa-spin fa-2x"></i>
-                <p class="mt-2">Loading items...</p>
-            </td>
-        </tr>
-    `;
-
-    // Use the pre-loaded items data instead of API call
-    try {
-        if (typeof preloadedItems !== 'undefined' && preloadedItems.length > 0) {
-            allItems = preloadedItems;
-            filteredItems = allItems;
-            totalItems = allItems.length;
-            totalPages = Math.ceil(totalItems / itemsPerPage);
-            currentPage = 1;
-
-            isSearching = false;
-            displayItems(allItems.slice(0, itemsPerPage));
-            updatePaginationControls();
-            updateTotalCount();
-
-            console.log('Items loaded successfully:', totalItems, 'items');
-        } else {
-            console.log('No items data available - checking if loadItemsDirectly was called');
-            showError('No items data available. Please try again.');
-        }
-    } catch (error) {
-        console.error('Error loading items:', error);
-        showError('Error loading items: ' + error.message);
-    }
-}
-
-function displayItems(items, isFiltered = false) {
-    const tableBody = document.getElementById('itemsTableBody');
-
-    if (items.length === 0) {
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="8" class="text-center py-4">
-                    <i class="fas fa-database fa-3x text-muted mb-3"></i>
-                    <h5 class="text-muted">No items found</h5>
-                    <p class="text-muted">No items match your search criteria.</p>
-                </td>
-            </tr>
-        `;
-        return;
-    }
-
-    // Build the entire table content first
-    let tableContent = '';
-
-    items.forEach((item, index) => {
-        const itemNumber = isFiltered ? index + 1 : (currentPage - 1) * itemsPerPage + index + 1;
-
-        // Escape special characters in strings to prevent issues
-        const safeItemCode = (item.Item_Code || '').replace(/'/g, "\\'");
-        const safeItemName = (item.Item_Name || 'N/A').replace(/'/g, "\\'");
-        const safeDescription = (item.Items_Description || '').replace(/'/g, "\\'");
-        const safeUnit = (item.Unit || '').replace(/'/g, "\\'");
-        const safeCategory = (item.Category || 'N/A').replace(/'/g, "\\'");
-
-        let actions = '';
-        if (userRole === 'admin') {
-            actions = `
-                <button class="btn btn-custom btn-edit me-1" onclick="editItem(${item.ID}, '${safeItemCode}', '${safeItemName}', '${safeDescription}', '${safeUnit}', ${item.Unit_Cost}, '${safeCategory}')">
-                    <i class="fas fa-edit"></i> Edit
-                </button>
-                <button class="btn btn-custom btn-delete" onclick="deleteItem(${item.ID}, '${safeItemCode}')">
-                    <i class="fas fa-trash"></i> Delete
-                </button>
-            `;
-        } else {
-            actions = '<span class="text-muted">No actions</span>';
-        }
-
-        tableContent += `
-            <tr>
-                <td>${itemNumber}</td>
-                <td><span class="item-code">${item.Item_Code}</span></td>
-                <td><span class="item-name">${item.Item_Name || 'N/A'}</span></td>
-                <td>${item.Items_Description}</td>
-                <td>${item.Unit}</td>
-                <td><span class="unit-cost">₱${parseFloat(item.Unit_Cost).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></td>
-                <td>${item.Category || 'N/A'}</td>
-                <td>${actions}</td>
-            </tr>
-        `;
-    });
-
-    // Set the table content in one operation to avoid DOM conflicts
-    tableBody.innerHTML = tableContent;
-}
-
-function performSearch() {
-    // Prevent multiple simultaneous searches
-    if (searchInProgress) {
-        console.log('Search already in progress, ignoring duplicate request');
-        return;
-    }
-
-    // Get search parameters
-    const itemName = document.getElementById('searchItemName').value.trim();
-    const description = document.getElementById('searchDescription').value.trim();
-    const category = document.getElementById('searchCategory').value.trim();
-
-    // Check if at least one search field has content
-    if (!itemName && !description && !category) {
-        showMessage('Please enter at least one search criteria', 'warning');
-        return;
-    }
-
-    // Set search in progress flag
-    searchInProgress = true;
-
-    // Show loading state
-    const tableBody = document.getElementById('itemsTableBody');
-    tableBody.innerHTML = `
-        <tr>
-            <td colspan="8" class="text-center py-4">
-                <i class="fas fa-search fa-spin fa-2x"></i>
-                <p class="mt-2">Searching items...</p>
-            </td>
-        </tr>
-    `;
-
-    // Disable search button during search
-    const searchBtn = document.getElementById('searchBtn');
-    const originalText = searchBtn.innerHTML;
-    searchBtn.disabled = true;
-    searchBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Searching...';
-
-    // Perform search with retry logic
-    const performSearchWithRetry = (retryCount = 0) => {
-        const searchParams = {};
-        if (itemName) searchParams.item_name = itemName;
-        if (description) searchParams.description = description;
-        if (category) searchParams.category = category;
-
-        // Store search criteria for refresh
-        lastSearchCriteria = { ...searchParams };
-
-        // Temporarily suppress errors during search operations
-        const originalOnError = window.onerror;
-        let errorSuppressed = false;
-
-        window.onerror = function(message, source, lineno, colno, error) {
-            // Suppress argon-dashboard modal cleanup errors
-            if (message && message.includes && message.includes('removeChild')) {
-                errorSuppressed = true;
-                return true;
-            }
-            // Call original handler for other errors
-            if (originalOnError) {
-                return originalOnError(message, source, lineno, colno, error);
-            }
-            return false;
-        };
-
-        return searchItems(searchParams).then(results => {
-            if (results.length > 0) {
-                currentMode = 'search';
-                // Display search results
-                allItems = results;
-                filteredItems = results;
-                totalItems = results.length;
-                totalPages = Math.ceil(totalItems / itemsPerPage);
-                currentPage = 1;
-                isSearching = true;
-
-                displayItems(results.slice(0, itemsPerPage), true);
-                updatePaginationControls();
-                updateTotalCount();
-                enableControls(true);
-
-                showMessage(`Found ${results.length} items matching your search criteria`, 'success');
-            } else {
-                // No results found
-                tableBody.innerHTML = `
-                    <tr>
-                        <td colspan="8" class="text-center py-4">
-                            <i class="fas fa-search fa-3x text-muted mb-3"></i>
-                            <h5 class="text-muted">No Items Found</h5>
-                            <p class="text-muted">No items match your search criteria. Try different keywords.</p>
-                            <button class="btn btn-primary" onclick="clearSearch()">Clear Search</button>
-                        </td>
-                    </tr>
-                `;
-                updateTotalCount();
-            }
-    }).catch(error => {
-        console.error('Search error:', error);
-
-        // Check if this is a connection timeout and we haven't exceeded retry limit
-        if (retryCount < 2 && (error.message && error.message.includes('timeout'))) {
-            console.log(`Search timeout, retrying... (${retryCount + 1}/3)`);
-
-            // Update loading message
-            const tableBody = document.getElementById('itemsTableBody');
-            tableBody.innerHTML = `
-                <tr>
-                    <td colspan="8" class="text-center py-4">
-                        <i class="fas fa-spinner fa-spin fa-2x"></i>
-                        <p class="mt-2">Connection timeout, retrying search... (${retryCount + 1}/3)</p>
-                    </td>
-                </tr>
-            `;
-
-            // Wait 1 second then retry
-            setTimeout(() => {
-                performSearchWithRetry(retryCount + 1);
-            }, 1000);
-            return;
-        }
-
-        // Final failure or non-timeout error
-        const tableBody = document.getElementById('itemsTableBody');
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="8" class="text-center py-4">
-                    <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
-                    <h5 class="text-danger">Search Error</h5>
-                    <p class="text-muted">${error.message && error.message.includes('timeout') ? 'Connection timeout. Please check your database connection.' : 'Failed to perform search. Please try again.'}</p>
-                    <button class="btn btn-primary" onclick="performSearch()">Retry Search</button>
-                </td>
-            </tr>
-        `;
-    }).finally(() => {
-        // Re-enable search button
-        searchBtn.disabled = false;
-        searchBtn.innerHTML = originalText;
-
-        // Clear search in progress flag
-        searchInProgress = false;
-
-        // Restore original error handler
-        setTimeout(() => {
-            window.onerror = originalOnError;
-        }, 100);
-    });
-    };
-
-    // Call the retry function
-    performSearchWithRetry();
-}
-
-function clearSearch() {
-    // Clear search fields
-    document.getElementById('searchItemName').value = '';
-    document.getElementById('searchDescription').value = '';
-    document.getElementById('searchCategory').value = ''; // This will select "All Categories"
-
-    // Reset to initial "Ready to Load Items" state
-    resetToInitialState();
-}
-
-// Function to refresh data based on current mode
+// Function to refresh DataTable
 function refreshData() {
     const refreshBtn = document.getElementById('refreshBtn');
-
-    // Check if there's anything to refresh
-    if (currentMode === 'none') {
-        showMessage('Nothing to refresh. Use "View All Items" or search first.', 'info');
-        return;
-    }
+    if (!refreshBtn) return;
 
     // Disable button during refresh
     const originalText = refreshBtn.innerHTML;
@@ -1294,158 +802,178 @@ function refreshData() {
     refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Refreshing...';
 
     try {
-        if (currentMode === 'view_all') {
-            // Refresh all items
-            refreshAllItems().then(() => {
-                showMessage('All items refreshed successfully!', 'success');
-            }).catch(error => {
-                console.error('Refresh error:', error);
-                showMessage('Failed to refresh items. Please try again.', 'danger');
-            });
-        } else if (currentMode === 'search') {
-            // Re-run the last search
-            refreshSearchResults().then(() => {
-                showMessage('Search results refreshed successfully!', 'success');
-            }).catch(error => {
-                console.error('Refresh error:', error);
-                showMessage('Failed to refresh search results. Please try again.', 'danger');
-            });
+        // Check if DataTable exists
+        const table = $('#itemsTable').DataTable();
+        if (table) {
+            table.ajax.reload();
+            showMessage('Data refreshed successfully!', 'success');
+        } else {
+            console.error('DataTable not initialized');
+            showMessage('Table not ready. Please reload the page.', 'warning');
         }
     } catch (error) {
         console.error('Refresh error:', error);
-        showMessage('An error occurred during refresh.', 'danger');
+        showMessage('Failed to refresh data. Please try again.', 'danger');
     } finally {
         // Re-enable button
         setTimeout(() => {
-            refreshBtn.disabled = false;
-            refreshBtn.innerHTML = originalText;
-        }, 1000); // Keep disabled for a moment to prevent spam clicking
+            if (refreshBtn) {
+                refreshBtn.disabled = false;
+                refreshBtn.innerHTML = originalText;
+            }
+        }, 1000);
     }
 }
 
-// Function to refresh all items
-function refreshAllItems() {
-    return new Promise((resolve, reject) => {
-        // Show loading state
-        const tableBody = document.getElementById('itemsTableBody');
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="8" class="text-center py-4">
-                    <i class="fas fa-sync fa-spin fa-2x"></i>
-                    <p class="mt-2">Refreshing all items...</p>
-                </td>
-            </tr>
-        `;
+// DataTables handles edit actions
 
-        // Reload items from database
-        loadItemsDirectly().then(() => {
-            loadItems();
-            resolve();
-        }).catch(error => {
-            reject(error);
-        });
-    });
-}
+// DataTables handles actions
 
-// Function to refresh search results
-function refreshSearchResults() {
-    return new Promise((resolve, reject) => {
-        // Check if we have search criteria
-        if (!lastSearchCriteria || Object.keys(lastSearchCriteria).length === 0) {
-            reject(new Error('No search criteria to refresh'));
-            return;
-        }
+// DataTables handles error display
 
-        // Show loading state
-        const tableBody = document.getElementById('itemsTableBody');
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="8" class="text-center py-4">
-                    <i class="fas fa-sync fa-spin fa-2x"></i>
-                    <p class="mt-2">Refreshing search results...</p>
-                </td>
-            </tr>
-        `;
+// Modals HTML
+const modalsHTML = `
+<!-- Edit Item Modal -->
+<div class="modal fade" id="editItemModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Item</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editItemForm">
+                    <input type="hidden" id="editItemId">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Item Code</label>
+                            <input type="text" class="form-control" id="editItemCode" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Item Name</label>
+                            <input type="text" class="form-control" id="editItemName" required>
+                        </div>
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label">Description</label>
+                            <textarea class="form-control" id="editDescription" rows="3" required></textarea>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Unit</label>
+                            <input type="text" class="form-control" id="editUnit" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Unit Cost</label>
+                            <input type="number" class="form-control" id="editUnitCost" step="0.01" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Category</label>
+                            <input type="text" class="form-control" id="editCategory">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="saveEditBtn">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+`;
 
-        // Re-run search with last criteria
-        searchItems(lastSearchCriteria).then(results => {
-            if (results.length > 0) {
-                allItems = results;
-                filteredItems = results;
-                totalItems = results.length;
-                totalPages = Math.ceil(totalItems / itemsPerPage);
-                currentPage = 1;
 
-                displayItems(results.slice(0, itemsPerPage), true);
-                updatePaginationControls();
-                updateTotalCount();
-            } else {
-                // No results found
-                tableBody.innerHTML = `
-                    <tr>
-                        <td colspan="8" class="text-center py-4">
-                            <i class="fas fa-search fa-3x text-muted mb-3"></i>
-                            <h5 class="text-muted">No Items Found</h5>
-                            <p class="text-muted">No items match your search criteria after refresh.</p>
-                        </td>
-                    </tr>
-                `;
-                updateTotalCount();
-            }
-            resolve();
-        }).catch(error => {
-            reject(error);
-        });
-    });
-}
-
-function resetToInitialState() {
-    // Clean up any modal instances
-    cleanupModals();
-
-    // Reset all variables
-    allItems = [];
-    filteredItems = [];
-    searchResults = [];
-    currentPage = 1;
-    totalPages = 1;
-    totalItems = 0;
-    isSearching = false;
-    currentMode = 'none';
-    lastSearchCriteria = {};
-
-    // Reset table to initial state
-    const tableBody = document.getElementById('itemsTableBody');
-    tableBody.innerHTML = `
-        <tr>
-            <td colspan="8" class="text-center py-5">
-                <i class="fas fa-info-circle fa-3x text-info mb-3"></i>
-                <h5 class="text-info">Ready to Load Items</h5>
-                <p class="text-muted mb-3">Click "View All Items" to display all database items, or use the search box above to find specific items.</p>
-                <small class="text-muted">Items are loaded on-demand to improve page performance.</small>
-            </td>
-        </tr>
+// Function to show messages
+function showMessage(message, type) {
+    // Create a temporary message container
+    const container = document.createElement('div');
+    container.innerHTML = `
+        <div class="alert alert-${type} alert-dismissible fade show position-fixed" role="alert" style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
     `;
+    document.body.appendChild(container);
 
-    // Clear pagination
-    const paginationControls = document.getElementById('paginationControls');
-    if (paginationControls) paginationControls.innerHTML = '';
-
-    // Reset controls to initial state
-    enableControls(false);
-
-    // Update total count
-    updateTotalCount();
-
-    // Show success message
-    showMessage('Search cleared. Ready to search or load items.', 'info');
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+        try {
+            container.remove();
+        } catch (error) {
+            console.warn('Error removing message container:', error);
+        }
+    }, 5000);
 }
 
-function updateTotalCount() {
-    const currentTotal = isSearching ? filteredItems.length : totalItems;
-    document.getElementById('totalCount').textContent = currentTotal;
-}
+// Edit Item Functions
+document.addEventListener('DOMContentLoaded', function() {
+    const saveEditBtn = document.getElementById('saveEditBtn');
+    if (saveEditBtn) {
+        saveEditBtn.addEventListener('click', function() {
+            const formData = {
+                id: document.getElementById('editItemId').value,
+                item_code: document.getElementById('editItemCode').value,
+                item_name: document.getElementById('editItemName').value,
+                item_description: document.getElementById('editDescription').value,
+                unit: document.getElementById('editUnit').value,
+                unit_cost: document.getElementById('editUnitCost').value,
+                category: document.getElementById('editCategory').value
+            };
 
+            authenticatedFetch(`${API_BASE_URL}/api_update_ppmp_item.php`, {
+                method: 'POST',
+                body: JSON.stringify(formData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showMessage(data.message, 'success');
+                    try {
+                        const modalElement = document.getElementById('editItemModal');
+                        if (modalElement) {
+                            const modal = bootstrap.Modal.getInstance(modalElement);
+                            if (modal) {
+                                modal.hide();
+                                // Clean up modal instance after hiding with longer delay
+                                setTimeout(() => {
+                                    try {
+                                        if (modalElement && !modalElement.classList.contains('show')) {
+                                            modal.dispose();
+                                        }
+                                    } catch (disposeError) {
+                                        console.warn('Error disposing modal:', disposeError);
+                                    }
+                                }, 500); // Wait longer for hide animation and any cleanup
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error hiding modal:', error);
+                        // Fallback: force hide the modal
+                        try {
+                            const modalElement = document.getElementById('editItemModal');
+                            if (modalElement) {
+                                modalElement.style.display = 'none';
+                                modalElement.classList.remove('show');
+                                document.body.classList.remove('modal-open');
+                            }
+                        } catch (fallbackError) {
+                            console.warn('Fallback modal hide also failed:', fallbackError);
+                        }
+                    }
+                    // Refresh DataTable
+                    $('#itemsTable').DataTable().ajax.reload();
+                } else {
+                    showMessage('Error: ' + data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showMessage('Network error occurred.', 'danger');
+            });
+        });
+    }
+});
+
+// Edit and Delete functions for DataTables actions
 function editItem(id, code, name, description, unit, cost, category) {
     // Ensure modal exists
     const modalElement = document.getElementById('editItemModal');
@@ -1503,7 +1031,8 @@ function deleteItem(itemId, itemCode) {
     .then(data => {
         if (data.success) {
             showMessage(data.message, 'success');
-            loadItems(); // Refresh the list
+            // Refresh DataTable
+            $('#itemsTable').DataTable().ajax.reload();
         } else {
             showMessage(data.message, 'danger');
         }
@@ -1518,289 +1047,78 @@ function deleteItem(itemId, itemCode) {
     });
 }
 
-function showError(message) {
-    const tableBody = document.getElementById('itemsTableBody');
-    tableBody.innerHTML = `
-        <tr>
-            <td colspan="8" class="text-center py-4">
-                <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
-                <h5 class="text-danger">Error</h5>
-                <p class="text-muted">${message}</p>
-            </td>
-        </tr>
-    `;
-}
+// DataTables handles all pagination and events
 
-function showMessage(message, type) {
-    // Create a temporary message container
-    const container = document.createElement('div');
-    container.innerHTML = `
-        <div class="alert alert-${type} alert-dismissible fade show position-fixed" role="alert" style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;">
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    `;
-    document.body.appendChild(container);
-
-    // Auto-hide after 5 seconds
-    setTimeout(() => {
-        container.remove();
-    }, 5000);
-}
-
-// Modals HTML
-const modalsHTML = `
-<!-- Edit Item Modal -->
-<div class="modal fade" id="editItemModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Edit Item</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="editItemForm">
-                    <input type="hidden" id="editItemId">
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Item Code</label>
-                            <input type="text" class="form-control" id="editItemCode" required>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Item Name</label>
-                            <input type="text" class="form-control" id="editItemName" required>
-                        </div>
-                        <div class="col-md-12 mb-3">
-                            <label class="form-label">Description</label>
-                            <textarea class="form-control" id="editDescription" rows="3" required></textarea>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Unit</label>
-                            <input type="text" class="form-control" id="editUnit" required>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Unit Cost</label>
-                            <input type="number" class="form-control" id="editUnitCost" step="0.01" required>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Category</label>
-                            <input type="text" class="form-control" id="editCategory">
-                        </div>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-success" id="saveEditBtn">Save Changes</button>
-            </div>
-        </div>
-    </div>
-</div>
-`;
-
-
-// Edit Item Functions
 document.addEventListener('DOMContentLoaded', function() {
-    const saveEditBtn = document.getElementById('saveEditBtn');
-    if (saveEditBtn) {
-        saveEditBtn.addEventListener('click', function() {
-            const formData = {
-                id: document.getElementById('editItemId').value,
-                item_code: document.getElementById('editItemCode').value,
-                item_name: document.getElementById('editItemName').value,
-                item_description: document.getElementById('editDescription').value,
-                unit: document.getElementById('editUnit').value,
-                unit_cost: document.getElementById('editUnitCost').value,
-                category: document.getElementById('editCategory').value
-            };
-
-            authenticatedFetch(`${API_BASE_URL}/api_update_ppmp_item.php`, {
-                method: 'POST',
-                body: JSON.stringify(formData)
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showMessage(data.message, 'success');
-                    try {
-                        const modalElement = document.getElementById('editItemModal');
-                        if (modalElement) {
-                            const modal = bootstrap.Modal.getInstance(modalElement);
-                            if (modal) {
-                                modal.hide();
-                                // Clean up modal instance after hiding with longer delay
-                                setTimeout(() => {
-                                    try {
-                                        if (modalElement && !modalElement.classList.contains('show')) {
-                                            modal.dispose();
-                                        }
-                                    } catch (disposeError) {
-                                        console.warn('Error disposing modal:', disposeError);
-                                    }
-                                }, 500); // Wait longer for hide animation and any cleanup
-                            }
-                        }
-                    } catch (error) {
-                        console.error('Error hiding modal:', error);
-                        // Fallback: force hide the modal
-                        try {
-                            const modalElement = document.getElementById('editItemModal');
-                            if (modalElement) {
-                                modalElement.style.display = 'none';
-                                modalElement.classList.remove('show');
-                                document.body.classList.remove('modal-open');
-                            }
-                        } catch (fallbackError) {
-                            console.warn('Fallback modal hide also failed:', fallbackError);
-                        }
+    // Initialize DataTables with compact settings
+    $('#itemsTable').DataTable({
+        serverSide: true,
+        ajax: {
+            url: 'get_items_direct.php',
+            type: 'GET'
+        },
+        columns: [
+            { data: 0, title: 'ID', width: '60px' }, // ID - now visible
+            { data: 1, title: 'Item Code' }, // Item Code
+            { data: 2, title: 'Item Name' }, // Item Name
+            { data: 3, title: 'Description' }, // Description
+            { data: 4, title: 'Unit' }, // Unit
+            { data: 5, title: 'Unit Cost' }, // Unit Cost
+            { data: 6, title: 'Category' }, // Category
+            {
+                data: null,
+                title: 'Actions',
+                orderable: false,
+                searchable: false,
+                render: function(data, type, row) {
+                    if (userRole === 'admin') {
+                        return `
+                            <button class="btn btn-custom btn-edit me-1" onclick="editItem(${row[0]}, '${row[1].replace(/'/g, "\\'")}', '${(row[2] || '').replace(/'/g, "\\'")}', '${row[3].replace(/'/g, "\\'")}', '${row[4].replace(/'/g, "\\'")}', ${parseFloat(row[5].replace('₱', '').replace(',', ''))}, '${(row[6] || '').replace(/'/g, "\\'")}')">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-custom btn-delete" onclick="deleteItem(${row[0]}, '${row[1].replace(/'/g, "\\'")}')">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        `;
+                    } else {
+                        return '<span class="text-muted">-</span>';
                     }
-                    loadItems();
-                } else {
-                    showMessage('Error: ' + data.message, 'danger');
                 }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showMessage('Network error occurred.', 'danger');
-            });
-        });
-    }
-});
-
-// Pagination Functions
-function updatePaginationControls() {
-    const paginationControls = document.getElementById('paginationControls');
-    paginationControls.innerHTML = '';
-
-    // Previous button
-    const prevBtn = document.createElement('li');
-    prevBtn.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
-    prevBtn.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage - 1})">Previous</a>`;
-    paginationControls.appendChild(prevBtn);
-
-    // Page numbers
-    const startPage = Math.max(1, currentPage - 2);
-    const endPage = Math.min(totalPages, currentPage + 2);
-
-    if (startPage > 1) {
-        const firstBtn = document.createElement('li');
-        firstBtn.className = 'page-item';
-        firstBtn.innerHTML = `<a class="page-link" href="#" onclick="changePage(1)">1</a>`;
-        paginationControls.appendChild(firstBtn);
-
-        if (startPage > 2) {
-            const ellipsis = document.createElement('li');
-            ellipsis.className = 'page-item disabled';
-            ellipsis.innerHTML = `<span class="page-link">...</span>`;
-            paginationControls.appendChild(ellipsis);
+            }
+        ],
+        pageLength: 25, // Start with fewer items per page
+        lengthMenu: [10, 25, 50, 100], // More compact options
+        order: [[0, 'asc']], // Order by ID ASC
+        responsive: {
+            details: false // Disable responsive details to keep compact
+        },
+        scrollX: true, // Enable horizontal scrolling on small screens
+        autoWidth: false, // Disable auto width for better control
+        language: {
+            processing: '<i class="fas fa-spinner fa-spin"></i> Loading...',
+            lengthMenu: '_MENU_ per page',
+            search: '',
+            searchPlaceholder: 'Search items...'
+        },
+        dom: '<"row"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6"f>>rt<"row"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
+        initComplete: function() {
+            // Make search input smaller
+            $('.dataTables_filter input').addClass('form-control-sm');
+            $('.dataTables_length select').addClass('form-select-sm');
         }
-    }
+    });
 
-    for (let i = startPage; i <= endPage; i++) {
-        const pageBtn = document.createElement('li');
-        pageBtn.className = `page-item ${i === currentPage ? 'active' : ''}`;
-        pageBtn.innerHTML = `<a class="page-link" href="#" onclick="changePage(${i})">${i}</a>`;
-        paginationControls.appendChild(pageBtn);
-    }
-
-    if (endPage < totalPages) {
-        if (endPage < totalPages - 1) {
-            const ellipsis = document.createElement('li');
-            ellipsis.className = 'page-item disabled';
-            ellipsis.innerHTML = `<span class="page-link">...</span>`;
-            paginationControls.appendChild(ellipsis);
-        }
-
-        const lastBtn = document.createElement('li');
-        lastBtn.className = 'page-item';
-        lastBtn.innerHTML = `<a class="page-link" href="#" onclick="changePage(${totalPages})">${totalPages}</a>`;
-        paginationControls.appendChild(lastBtn);
-    }
-
-    // Next button
-    const nextBtn = document.createElement('li');
-    nextBtn.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
-    nextBtn.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage + 1})">Next</a>`;
-    paginationControls.appendChild(nextBtn);
-}
-
-function changePage(page) {
-    if (page >= 1 && page <= totalPages && page !== currentPage) {
-        currentPage = page;
-        if (isSearching) {
-            displayItems(filteredItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage), true);
-        } else {
-            displayItems(allItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage));
-        }
-        updatePaginationControls();
-    }
-}
-
-// Event listeners
-document.getElementById('itemsPerPage').addEventListener('change', function() {
-    itemsPerPage = parseInt(this.value);
-    currentPage = 1; // Reset to first page when changing items per page
-    if (isSearching) {
-        totalPages = Math.ceil(filteredItems.length / itemsPerPage);
-        displayItems(filteredItems.slice(0, itemsPerPage), true);
-    } else {
-        totalPages = Math.ceil(allItems.length / itemsPerPage);
-        displayItems(allItems.slice(0, itemsPerPage));
-    }
-    updatePaginationControls();
-});
-
-document.addEventListener('DOMContentLoaded', function() {
-    // Clean up any existing modals first
-    cleanupModals();
+    // Initialize theme manager
+    new DatabaseViewerThemeManager();
 
     // Insert modals into body
     document.body.insertAdjacentHTML('beforeend', modalsHTML);
 
-    // Wait for all elements to be loaded
-    setTimeout(() => {
-        new DatabaseViewerThemeManager();
-
-        // Load categories for the dropdown
-        loadCategories();
-
-        // Add event listeners
-        const viewAllBtn = document.getElementById('viewAllBtn');
-        const searchBtn = document.getElementById('searchBtn');
-        const clearBtn = document.getElementById('clearBtn');
-
-        if (viewAllBtn) {
-            viewAllBtn.addEventListener('click', handleViewAll);
-        }
-        if (searchBtn) {
-            searchBtn.addEventListener('click', performSearch);
-        }
-        if (clearBtn) {
-            clearBtn.addEventListener('click', clearSearch);
-        }
-
-        // Allow Enter key to trigger search from any input field
-        ['searchItemName', 'searchDescription'].forEach(fieldId => {
-            const field = document.getElementById(fieldId);
-            if (field) {
-                field.addEventListener('keypress', function(e) {
-                    if (e.key === 'Enter') {
-                        performSearch();
-                    }
-                });
-            }
-        });
-
-        // Allow Enter key for category select (though it's less common)
-        const categorySelect = document.getElementById('searchCategory');
-        if (categorySelect) {
-            categorySelect.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    performSearch();
-                }
-            });
-        }
-    }, 100);
+    // Add event listener for refresh button
+    const refreshBtn = document.getElementById('refreshBtn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', refreshData);
+    }
 });
 </script>
 

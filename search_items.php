@@ -21,11 +21,12 @@ $dotenv->load();
 
 try {
     // Set a reasonable timeout for database operations
-    set_time_limit(30); // 30 seconds max execution time
+    set_time_limit(120); // 120 seconds max execution time
+    ini_set('memory_limit', '512M');
 
     // Disable default connection timeout and set custom options
-    ini_set('mysql.connect_timeout', 10);
-    ini_set('default_socket_timeout', 15);
+    ini_set('mysql.connect_timeout', 30);
+    ini_set('default_socket_timeout', 60);
 
     $host     = $_ENV['DB_HOST'];
     $dbname   = $_ENV['DB_NAME'];
