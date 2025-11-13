@@ -35,12 +35,16 @@ try {
     $username = $_ENV['DB_USER'];
     $password = $_ENV['DB_PASS'];
 
+    error_log("DEBUG: Attempting database connection to host=$host, dbname=$dbname, user=$username");
+
     // Add connection timeout and options
     $conn = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_TIMEOUT => 5, // 5 second connection timeout
         PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4"
     ]);
+
+    error_log("DEBUG: Database connection successful");
 
     // Check if this is a DataTables request
     $isDataTables = isset($_GET['draw']);
@@ -188,6 +192,8 @@ try {
 
 } catch (PDOException $e) {
     error_log("Database error: " . $e->getMessage());
+    error_log("DEBUG: PDO Error Code: " . $e->getCode());
+    error_log("DEBUG: PDO Error Info: " . json_encode($e->errorInfo));
     $response = json_encode([
         'success' => false,
         'error' => 'Database error: ' . $e->getMessage()

@@ -97,7 +97,7 @@ $user_role = $role;
     let preloadedItems = [];
 
     function loadItemsDirectly() {
-        return fetch('get_items_direct.php', {
+        return fetch(API_BASE_URL + '/get_items_direct.php', {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json'
@@ -123,7 +123,7 @@ $user_role = $role;
     // Search items function
     function searchItems(searchParams) {
         const queryString = new URLSearchParams(searchParams).toString();
-        return fetch(`search_items.php?${queryString}`, {
+        return fetch(`${API_BASE_URL}/search_items.php?${queryString}`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json'
@@ -1136,7 +1136,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const table = $('#itemsTable').DataTable({
         serverSide: true,
         ajax: {
-            url: 'get_items_direct.php',
+            url: API_BASE_URL + '/get_items_direct.php',
             type: 'GET',
             data: function(d) {
                 d.item_code = $('#searchItemCode').val();
