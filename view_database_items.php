@@ -763,7 +763,8 @@ window.addEventListener('error', function(e) {
 
 // View Database Items initialization - authentication handled by PHP
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('View Database Items page loaded successfully');
+    console.log('🔍 DEBUG: View Database Items page loaded successfully');
+    console.log('🔍 DEBUG: Initializing DataTables...');
 });
 
 
@@ -1131,6 +1132,7 @@ function deleteItem(itemId, itemCode) {
 
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize DataTables with compact settings
+    console.log('🔍 DEBUG: Creating DataTables instance...');
     const table = $('#itemsTable').DataTable({
         serverSide: true,
         ajax: {
@@ -1140,7 +1142,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 d.item_code = $('#searchItemCode').val();
                 d.item_name = $('#searchItemName').val();
                 d.category = $('#searchCategory').val();
-                console.log('DataTables ajax request:', d);
+                console.log('🔍 DEBUG: DataTables ajax request:', {
+                    url: 'get_items_direct.php',
+                    draw: d.draw,
+                    start: d.start,
+                    length: d.length,
+                    search: d.search,
+                    item_code: d.item_code,
+                    item_name: d.item_name,
+                    category: d.category
+                });
+            },
+            error: function(xhr, error, thrown) {
+                console.error('🔍 DEBUG: DataTables ajax error:', {
+                    status: xhr.status,
+                    statusText: xhr.statusText,
+                    error: error,
+                    thrown: thrown,
+                    responseText: xhr.responseText ? xhr.responseText.substring(0, 200) : 'No response'
+                });
             }
         },
         columns: [
@@ -1186,9 +1206,20 @@ document.addEventListener('DOMContentLoaded', function() {
         },
         dom: '<"row"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6">>rt<"row"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
         initComplete: function(settings, json) {
+            console.log('🔍 DEBUG: DataTables initialization complete');
+            if (json) {
+                console.log('🔍 DEBUG: Initial data loaded:', json.recordsTotal, 'total records');
+            } else {
+                console.log('🔍 DEBUG: No initial data received');
+            }
+
             // Make search input smaller
             $('.dataTables_filter input').addClass('form-control-sm');
             $('.dataTables_length select').addClass('form-select-sm');
+        },
+        drawCallback: function(settings) {
+            const info = table.page.info();
+            console.log('🔍 DEBUG: Table draw complete - Showing', info.recordsDisplay, 'of', info.recordsTotal, 'records');
         }
     });
 
@@ -1203,6 +1234,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (refreshBtn) {
         refreshBtn.addEventListener('click', refreshData);
     }
+
+    console.log('🔍 DEBUG: All initialization complete - DataTables should be loading data now');
 
     // Search functionality
     const searchBtn = document.getElementById('searchBtn');
