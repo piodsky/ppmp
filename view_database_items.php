@@ -240,7 +240,63 @@ $user_role = $role;
             border-radius: 10px;
             margin-bottom: 20px;
             border: 1px solid var(--border-light);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
         }
+
+        .search-container:hover {
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        }
+
+        .btn {
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .table-responsive {
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px var(--shadow-color);
+            transition: box-shadow 0.3s ease;
+        }
+
+        .table-responsive:hover {
+            box-shadow: 0 6px 25px var(--shadow-color);
+        }
+
+        .card {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+        }
+
+        .form-control {
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .form-control:focus {
+            transform: scale(1.02);
+        }
+
+        .table-container {
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
 
         .table-responsive {
             border-radius: 8px;
@@ -603,10 +659,35 @@ $user_role = $role;
             </div>
         </div>
 
-        <!-- DataTables will handle search and pagination automatically -->
+        <!-- Custom Search Form -->
+        <div class="search-container">
+            <h5 class="mb-3"><i class="fas fa-search"></i> Search Items</h5>
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Item Code</label>
+                    <input type="text" class="form-control" id="searchItemCode" placeholder="Enter item code">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Item Name</label>
+                    <input type="text" class="form-control" id="searchItemName" placeholder="Enter item name">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Category</label>
+                    <input type="text" class="form-control" id="searchCategory" placeholder="Enter category">
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button class="btn btn-primary me-2" id="searchBtn">
+                        <i class="fas fa-search"></i> Search
+                    </button>
+                    <button class="btn btn-secondary" id="clearSearchBtn">
+                        <i class="fas fa-times"></i> Clear
+                    </button>
+                </div>
+            </div>
+        </div>
 
         <!-- Items Table -->
-        <div class="card shadow">
+        <div class="card shadow table-container">
             <div class="card-body p-2">
                 <div class="table-responsive">
                     <table class="table table-striped" id="itemsTable" style="width:100%">
@@ -683,7 +764,6 @@ window.addEventListener('error', function(e) {
 // View Database Items initialization - authentication handled by PHP
 document.addEventListener('DOMContentLoaded', function() {
     console.log('View Database Items page loaded successfully');
-    console.log('Preloaded items available:', typeof preloadedItems !== 'undefined' ? preloadedItems.length : 'undefined');
 });
 
 
@@ -1051,11 +1131,17 @@ function deleteItem(itemId, itemCode) {
 
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize DataTables with compact settings
-    $('#itemsTable').DataTable({
+    const table = $('#itemsTable').DataTable({
         serverSide: true,
         ajax: {
             url: 'get_items_direct.php',
-            type: 'GET'
+            type: 'GET',
+            data: function(d) {
+                d.item_code = $('#searchItemCode').val();
+                d.item_name = $('#searchItemName').val();
+                d.category = $('#searchCategory').val();
+                console.log('DataTables ajax request:', d);
+            }
         },
         columns: [
             { data: 0, title: 'ID', width: '60px' }, // ID - now visible
@@ -1086,7 +1172,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         ],
-        pageLength: 25, // Start with fewer items per page
+        pageLength: 10, // Start with fewer items per page to reduce load
         lengthMenu: [10, 25, 50, 100], // More compact options
         order: [[0, 'asc']], // Order by ID ASC
         responsive: {
@@ -1096,12 +1182,10 @@ document.addEventListener('DOMContentLoaded', function() {
         autoWidth: false, // Disable auto width for better control
         language: {
             processing: '<i class="fas fa-spinner fa-spin"></i> Loading...',
-            lengthMenu: '_MENU_ per page',
-            search: '',
-            searchPlaceholder: 'Search items...'
+            lengthMenu: '_MENU_ per page'
         },
-        dom: '<"row"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6"f>>rt<"row"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
-        initComplete: function() {
+        dom: '<"row"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6">>rt<"row"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
+        initComplete: function(settings, json) {
             // Make search input smaller
             $('.dataTables_filter input').addClass('form-control-sm');
             $('.dataTables_length select').addClass('form-select-sm');
@@ -1119,6 +1203,46 @@ document.addEventListener('DOMContentLoaded', function() {
     if (refreshBtn) {
         refreshBtn.addEventListener('click', refreshData);
     }
+
+    // Search functionality
+    const searchBtn = document.getElementById('searchBtn');
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
+
+    function performSearch() {
+        const originalText = searchBtn.innerHTML;
+        searchBtn.disabled = true;
+        searchBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Searching...';
+
+        table.ajax.reload(function() {
+            searchBtn.disabled = false;
+            searchBtn.innerHTML = originalText;
+        });
+    }
+
+    if (searchBtn) {
+        searchBtn.addEventListener('click', performSearch);
+    }
+
+    if (clearSearchBtn) {
+        clearSearchBtn.addEventListener('click', function() {
+            document.getElementById('searchItemCode').value = '';
+            document.getElementById('searchItemName').value = '';
+            document.getElementById('searchCategory').value = '';
+            performSearch();
+        });
+    }
+
+    // Allow search on Enter key
+    ['searchItemCode', 'searchItemName', 'searchCategory'].forEach(id => {
+        const input = document.getElementById(id);
+        if (input) {
+            input.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    table.ajax.reload();
+                }
+            });
+        }
+    });
 });
 </script>
 

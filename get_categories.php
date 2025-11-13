@@ -25,13 +25,19 @@ try {
     $username = $_ENV['DB_USER'];
     $password = $_ENV['DB_PASS'];
 
-    $conn = new PDO("mysql:host=$host;dbname=$dbname", $username, $password);
-    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    // Add connection timeout and options
+    $conn = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_TIMEOUT => 5, // 5 second connection timeout
+        PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4"
+    ]);
 
     // Get distinct categories
+    error_log("get_categories.php: Starting query for categories");
     $stmt = $conn->prepare("SELECT DISTINCT Category FROM tbl_ppmp_bac_items WHERE Category IS NOT NULL AND Category != '' ORDER BY Category ASC");
     $stmt->execute();
     $categories = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    error_log("get_categories.php: Found " . count($categories) . " categories");
 
     $response = json_encode([
         'success' => true,

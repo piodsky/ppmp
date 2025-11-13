@@ -59,9 +59,30 @@ try {
         // Build WHERE clause for search
         $whereClause = '';
         $params = [];
+        $conditions = [];
+
+        // Global search
         if (!empty($searchValue)) {
-            $whereClause = "WHERE (Item_Code LIKE :search OR Item_Name LIKE :search OR Items_Description LIKE :search OR Category LIKE :search)";
+            $conditions[] = "(Item_Code LIKE :search OR Item_Name LIKE :search OR Items_Description LIKE :search OR Category LIKE :search)";
             $params[':search'] = '%' . $searchValue . '%';
+        }
+
+        // Custom filters
+        if (!empty($_GET['item_code'])) {
+            $conditions[] = "Item_Code LIKE :item_code";
+            $params[':item_code'] = '%' . $_GET['item_code'] . '%';
+        }
+        if (!empty($_GET['item_name'])) {
+            $conditions[] = "Item_Name LIKE :item_name";
+            $params[':item_name'] = '%' . $_GET['item_name'] . '%';
+        }
+        if (!empty($_GET['category'])) {
+            $conditions[] = "Category LIKE :category";
+            $params[':category'] = '%' . $_GET['category'] . '%';
+        }
+
+        if (!empty($conditions)) {
+            $whereClause = "WHERE " . implode(" AND ", $conditions);
         }
 
         // Get total count
