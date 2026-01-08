@@ -735,8 +735,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         return;
     }
 
-    // Check if user is admin
-    if (userData.role !== 'admin') {
+    // Check if user is admin or staff
+    if (userData.role !== 'admin' && userData.role !== 'staff') {
         window.location.href = 'dashboard.php';
         return;
     }
@@ -814,10 +814,39 @@ function displayUsers(users) {
 
     tbody.innerHTML = '';
 
+    // Check if current user is admin (can delete) or staff (cannot delete)
+    const currentUser = getUserData();
+    const canDelete = currentUser && currentUser.role === 'admin';
+
+    // Process each user
     users.forEach(user => {
-        const roleClass = `role-${user.Role}`;
-        const createdDate = new Date(user.Created_At).toLocaleDateString();
-        const profilePic = user.profile_picture ? `uploads/profiles/${user.profile_picture}` : 'assets/logo.svg';
+        // Determine role badge class
+        const roleClass = `role-${user.Role.toLowerCase()}`;
+
+        // Determine profile picture
+        const profilePic = user.profile_picture 
+            ? `uploads/profiles/${user.profile_picture}` 
+            : 'assets/logo.svg';
+
+        // Format created date
+        const createdDate = user.Created_At 
+            ? new Date(user.Created_At).toLocaleDateString() 
+            : '';
+
+        // Determine action buttons
+        let actionButtons = `
+            <button class="btn btn-sm btn-warning" onclick="editUser(${user.ID})">
+                <i class="fas fa-edit"></i>
+            </button>
+        `;
+        
+        if (canDelete) {
+            actionButtons += `
+                <button class="btn btn-sm btn-danger" onclick="deleteUser(${user.ID}, '${user.Username}')">
+                    <i class="fas fa-trash"></i>
+                </button>
+            `;
+        }
 
         tbody.innerHTML += `
             <tr>
@@ -832,14 +861,7 @@ function displayUsers(users) {
                 <td><span class="role-badge ${roleClass}">${user.Role.toUpperCase()}</span></td>
                 <td>${user.Department || 'Not Assigned'}</td>
                 <td>${createdDate}</td>
-                <td class="action-buttons">
-                    <button class="btn btn-sm btn-warning" onclick="editUser(${user.ID})">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteUser(${user.ID}, '${user.Username}')">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </td>
+                <td class="action-buttons">${actionButtons}</td>
             </tr>
         `;
     });

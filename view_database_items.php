@@ -985,74 +985,6 @@ function showMessage(message, type) {
     }, 5000);
 }
 
-// Edit Item Functions
-document.addEventListener('DOMContentLoaded', function() {
-    const saveEditBtn = document.getElementById('saveEditBtn');
-    if (saveEditBtn) {
-        saveEditBtn.addEventListener('click', function() {
-            const formData = {
-                id: document.getElementById('editItemId').value,
-                item_code: document.getElementById('editItemCode').value,
-                item_name: document.getElementById('editItemName').value,
-                item_description: document.getElementById('editDescription').value,
-                unit: document.getElementById('editUnit').value,
-                unit_cost: document.getElementById('editUnitCost').value,
-                category: document.getElementById('editCategory').value
-            };
-
-            authenticatedFetch(`${API_BASE_URL}/api_update_ppmp_item.php`, {
-                method: 'POST',
-                body: JSON.stringify(formData)
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showMessage(data.message, 'success');
-                    try {
-                        const modalElement = document.getElementById('editItemModal');
-                        if (modalElement) {
-                            const modal = bootstrap.Modal.getInstance(modalElement);
-                            if (modal) {
-                                modal.hide();
-                                // Clean up modal instance after hiding with longer delay
-                                setTimeout(() => {
-                                    try {
-                                        if (modalElement && !modalElement.classList.contains('show')) {
-                                            modal.dispose();
-                                        }
-                                    } catch (disposeError) {
-                                        console.warn('Error disposing modal:', disposeError);
-                                    }
-                                }, 500); // Wait longer for hide animation and any cleanup
-                            }
-                        }
-                    } catch (error) {
-                        console.error('Error hiding modal:', error);
-                        // Fallback: force hide the modal
-                        try {
-                            const modalElement = document.getElementById('editItemModal');
-                            if (modalElement) {
-                                modalElement.style.display = 'none';
-                                modalElement.classList.remove('show');
-                                document.body.classList.remove('modal-open');
-                            }
-                        } catch (fallbackError) {
-                            console.warn('Fallback modal hide also failed:', fallbackError);
-                        }
-                    }
-                    // Refresh DataTable
-                    $('#itemsTable').DataTable().ajax.reload();
-                } else {
-                    showMessage('Error: ' + data.message, 'danger');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showMessage('Network error occurred.', 'danger');
-            });
-        });
-    }
-});
 
 // Edit and Delete functions for DataTables actions
 function editItem(id, code, name, description, unit, cost, category) {
@@ -1177,7 +1109,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 orderable: false,
                 searchable: false,
                 render: function(data, type, row) {
-                    if (userRole === 'admin') {
+                    if (userRole === 'admin' || userRole === 'staff') {
                         return `
                             <button class="btn btn-custom btn-edit me-1" onclick="editItem(${row[0]}, '${row[1].replace(/'/g, "\\'")}', '${(row[2] || '').replace(/'/g, "\\'")}', '${row[3].replace(/'/g, "\\'")}', '${row[4].replace(/'/g, "\\'")}', ${parseFloat(row[5].replace('₱', '').replace(',', ''))}, '${(row[6] || '').replace(/'/g, "\\'")}')">
                                 <i class="fas fa-edit"></i>
@@ -1228,6 +1160,75 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Insert modals into body
     document.body.insertAdjacentHTML('beforeend', modalsHTML);
+
+    // Attach event listener to save button now that modal exists
+    const saveEditBtn = document.getElementById('saveEditBtn');
+    if (saveEditBtn) {
+        saveEditBtn.addEventListener('click', function() {
+            const formData = {
+                id: document.getElementById('editItemId').value,
+                item_code: document.getElementById('editItemCode').value,
+                item_name: document.getElementById('editItemName').value,
+                item_description: document.getElementById('editDescription').value,
+                unit: document.getElementById('editUnit').value,
+                unit_cost: document.getElementById('editUnitCost').value,
+                category: document.getElementById('editCategory').value
+            };
+
+            authenticatedFetch(`${API_BASE_URL}/api_update_ppmp_item.php`, {
+                method: 'POST',
+                body: JSON.stringify(formData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showMessage(data.message, 'success');
+                    try {
+                        const modalElement = document.getElementById('editItemModal');
+                        if (modalElement) {
+                            const modal = bootstrap.Modal.getInstance(modalElement);
+                            if (modal) {
+                                modal.hide();
+                                // Clean up modal instance after hiding with longer delay
+                                setTimeout(() => {
+                                    try {
+                                        if (modalElement && !modalElement.classList.contains('show')) {
+                                            modal.dispose();
+                                        }
+                                    } catch (disposeError) {
+                                        console.warn('Error disposing modal:', disposeError);
+                                    }
+                                }, 500); // Wait longer for hide animation and any cleanup
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error hiding modal:', error);
+                        // Fallback: force hide the modal
+                        try {
+                            const modalElement = document.getElementById('editItemModal');
+                            if (modalElement) {
+                                modalElement.style.display = 'none';
+                                modalElement.classList.remove('show');
+                                document.body.classList.remove('modal-open');
+                            }
+                        } catch (fallbackError) {
+                            console.warn('Fallback modal hide also failed:', fallbackError);
+                        }
+                    }
+                    // Refresh DataTable
+                    $('#itemsTable').DataTable().ajax.reload();
+                } else {
+                    showMessage('Error: ' + data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showMessage('Network error occurred.', 'danger');
+            });
+        });
+    } else {
+        console.error('🔍 DEBUG: saveEditBtn not found after modal insertion');
+    }
 
     // Add event listener for refresh button
     const refreshBtn = document.getElementById('refreshBtn');

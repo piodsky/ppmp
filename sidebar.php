@@ -727,7 +727,7 @@ document.addEventListener('DOMContentLoaded', () => {
            const userData = JSON.parse(localStorage.getItem('user_data'));
            const managementSection = document.getElementById('managementSection');
 
-           if (userData && userData.role === 'admin' && managementSection) {
+           if (userData && (userData.role === 'admin' || userData.role === 'staff') && managementSection) {
                managementSection.style.display = 'block';
            } else if (managementSection) {
                managementSection.style.display = 'none';

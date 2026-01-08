@@ -469,6 +469,13 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
         .welcome-profile-avatar:hover {
             transform: scale(1.1);
         }
+
+        /* Role highlighting */
+        .role-admin { color: #dc3545 !important; font-weight: bold; }
+        .role-staff { color: #ffc107 !important; font-weight: bold; }
+        .role-user { color: #007bff !important; font-weight: bold; }
+        .role-superadmin { color: #6f42c1 !important; font-weight: bold; }
+        .role-default { color: #6c757d !important; font-weight: bold; }
     </style>
 </head>
 
@@ -511,6 +518,7 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
                         <div class="col-lg-7">
                             <h2 class="mb-2"><i class="fas fa-chart-line me-2"></i>Welcome back, <span id="welcomeUsername">User</span>!</h2>
                             <p class="mb-1 opacity-8"><i class="fas fa-building me-2"></i><span id="welcomeDepartment">Loading...</span></p>
+                            <p class="mb-1 opacity-8"><i class="fas fa-user-shield me-2"></i><strong>Role:</strong> <span id="welcomeRole">Loading...</span></p>
                             <p class="mb-0 opacity-8">Here's what's happening with your PPMP system today.</p>
                         </div>
                         <div class="col-lg-3 text-end">
@@ -880,11 +888,33 @@ function populateUserData(userData) {
     // Update welcome message
     const welcomeUsername = document.getElementById('welcomeUsername');
     const welcomeDepartment = document.getElementById('welcomeDepartment');
+    const welcomeRole = document.getElementById('welcomeRole');
     if (welcomeUsername) {
         welcomeUsername.textContent = userData.username || userData.Username || 'User';
     }
     if (welcomeDepartment) {
         welcomeDepartment.textContent = userData.department || userData.Department || 'Not Assigned';
+    }
+    if (welcomeRole) {
+        const role = userData.role || userData.Role || 'Not Assigned';
+        welcomeRole.textContent = role;
+
+        // Remove existing role classes
+        welcomeRole.classList.remove('role-admin', 'role-staff', 'role-user', 'role-superadmin', 'role-default');
+
+        // Add appropriate class based on role
+        const roleLower = role.toLowerCase();
+        if (roleLower.includes('admin') && roleLower.includes('super')) {
+            welcomeRole.classList.add('role-superadmin');
+        } else if (roleLower.includes('admin')) {
+            welcomeRole.classList.add('role-admin');
+        } else if (roleLower.includes('staff')) {
+            welcomeRole.classList.add('role-staff');
+        } else if (roleLower.includes('user')) {
+            welcomeRole.classList.add('role-user');
+        } else {
+            welcomeRole.classList.add('role-default');
+        }
     }
 
     // Update profile picture

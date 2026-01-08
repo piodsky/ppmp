@@ -701,7 +701,7 @@ function displayPendingItems(items) {
         });
 
         let actions = '';
-        if (USER_ROLE === 'admin') {
+        if (USER_ROLE === 'admin' || USER_ROLE === 'staff') {
             actions = '<div class="btn-group btn-group-sm" role="group">' +
                 `<button class="btn btn-success" onclick="showApprovalModal(${item.ID}, 'approve', '${item.Item_Code}')" title="Approve"><i class="fas fa-check"></i></button>` +
                 `<button class="btn btn-danger" onclick="showApprovalModal(${item.ID}, 'reject', '${item.Item_Code}')" title="Reject"><i class="fas fa-times"></i></button>` +
@@ -792,7 +792,7 @@ function displayApprovedItems(items) {
         });
 
         let actions = '';
-        if (USER_ROLE === 'admin') {
+        if (USER_ROLE === 'admin' || USER_ROLE === 'staff') {
             actions = '<div class="btn-group btn-group-sm" role="group">' +
                 `<button class="btn btn-warning" onclick="editItem(${item.ID}, '${item.Item_Code}', '${item.Item_Name}', '${item.Items_Description}', '${item.Unit}', ${item.Unit_Cost}, '${item.Category}')" title="Edit"><i class="fas fa-edit"></i></button>` +
                 `<button class="btn btn-danger" onclick="deleteItem(${item.ID}, '${item.Item_Code}')" title="Delete"><i class="fas fa-trash"></i></button>` +
@@ -988,12 +988,14 @@ document.getElementById('addRowBtn').addEventListener('click', function() {
 
     // Reset all inputs and selects
     newRow.querySelectorAll('input').forEach(input => {
-        input.value = '';
-        // Remove datalist attribute to create new one
-        input.removeAttribute('list');
-        // Clear any stored properties
-        delete input.lastValue;
-        delete input.suggestions;
+        if (input.name !== 'category[]') { // Don't reset category, keep it as "Other Supplies"
+            input.value = '';
+            // Remove datalist attribute to create new one
+            input.removeAttribute('list');
+            // Clear any stored properties
+            delete input.lastValue;
+            delete input.suggestions;
+        }
     });
     newRow.querySelectorAll('select').forEach(select => select.selectedIndex = 0);
 
@@ -1176,7 +1178,7 @@ function handleItemSelection(inputElement) {
         const itemNameField = row.querySelector('input[name="item_name[]"]');
         const descriptionField = row.querySelector('input[name="description[]"]');
         const unitField = row.querySelector('select[name="unit[]"]');
-        const categoryField = row.querySelector('select[name="category[]"]');
+        const categoryField = row.querySelector('input[name="category[]"]');
         const itemCodeField = row.querySelector('input[name="item_code[]"]');
 
         if (inputName === 'item_code[]') {
@@ -1269,6 +1271,11 @@ document.getElementById('addItemsForm').addEventListener('submit', async functio
     const units = formData.getAll('unit[]');
     const unitCosts = formData.getAll('unit_cost[]');
     const categories = formData.getAll('category[]');
+
+    console.log('DEBUG: Form data collected:');
+    console.log('itemCodes:', itemCodes);
+    console.log('itemNames:', itemNames);
+    console.log('categories:', categories);
 
     for (let i = 0; i < itemNames.length; i++) {
         if (itemNames[i].trim()) {

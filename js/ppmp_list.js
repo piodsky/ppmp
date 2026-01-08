@@ -148,7 +148,7 @@ function displayPPMPList(ppmpList) {
               <i class="fas fa-edit"></i>
             </button>
             ` : ''}
-            ${ppmp.status === 'submitted' && userRole === 'admin' ? `
+            ${ppmp.status === 'submitted' && (userRole === 'admin' || userRole === 'staff') ? `
             <button class="btn btn-sm btn-success" onclick="approvePPMP(${ppmp.id}, '${ppmp.ppmp_number}', this)" title="Approve PPMP">
               <i class="fas fa-check"></i>
             </button>

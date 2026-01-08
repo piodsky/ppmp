@@ -319,7 +319,7 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
                   <th>Unit Cost</th>
                   <th>Total Qty</th>
                   <th>Total Cost</th>
-                  <th>PPMP Count</th>
+                  <th>PPMP Numbers</th>
                 </tr>
               </thead>
               <tbody id="consolidatedTableBody">
@@ -421,6 +421,68 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
                   <tr>
                     <td colspan="16" class="text-center">
                       <i class="fas fa-spinner fa-spin"></i> Loading department report data...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Category Report Section -->
+      <div class="row mt-4">
+        <div class="col-12">
+          <div class="form-section">
+            <h6 class="section-title">📂 Category Consolidated Report</h6>
+            <div class="row mb-3">
+              <div class="col-md-4">
+                <select id="categoryFilter" class="form-control">
+                  <option value="">Select Category</option>
+                  <!-- Categories will be loaded dynamically -->
+                </select>
+              </div>
+              <div class="col-md-4">
+                <button class="btn btn-primary" onclick="loadCategoryReport()">
+                  <i class="fas fa-search"></i> Load Category Report
+                </button>
+              </div>
+              <div class="col-md-4">
+                <div class="dropdown btn-group">
+                  <button class="btn btn-danger" onclick="previewCategoryReport()">
+                    <i class="fas fa-eye"></i> Preview PDF
+                  </button>
+                  <button class="btn btn-danger dropdown-toggle dropdown-toggle-split" data-toggle="dropdown" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                    <span class="sr-only">Toggle Dropdown</span>
+                  </button>
+                  <div class="dropdown-menu">
+                    <a class="dropdown-item" href="#" onclick="downloadCategoryReport()">
+                      <i class="fas fa-download"></i> Download PDF
+                    </a>
+                    <a class="dropdown-item" href="#" onclick="exportCategoryReport()">
+                      <i class="fas fa-file-csv"></i> Export CSV
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="report-table-container">
+              <table class="table table-striped" id="categoryReportTable">
+                <thead id="categoryReportTableHead">
+                  <tr>
+                    <th>Item Code</th>
+                    <th>Item Name & Specifications</th>
+                    <th>Unit</th>
+                    <th colspan="10">Departments</th>
+                    <th>Total Qty</th>
+                    <th>Unit Cost</th>
+                    <th>Total Cost</th>
+                  </tr>
+                </thead>
+                <tbody id="categoryReportTableBody">
+                  <tr>
+                    <td colspan="16" class="text-center">
+                      <i class="fas fa-info-circle"></i> Select a category and click "Load Category Report" to view items by department.
                     </td>
                   </tr>
                 </tbody>
@@ -636,7 +698,7 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
               tbody.innerHTML += `
                   <tr class="table-info">
                       <td colspan="18" class="text-left font-weight-bold">
-                          ${item.name}
+                          <i class="fas fa-folder-open mr-2"></i>${item.name}
                       </td>
                   </tr>
               `;
@@ -724,6 +786,147 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
       const tbody = document.getElementById('deptReportTableBody');
       tbody.innerHTML = '';
 
+      let currentCategory = '';
+      const totalColumns = 6 + departments.length; // Item Code, Name, Unit, Total Qty, Unit Cost, Total Cost + departments
+
+      data.forEach(item => {
+          // Add category header if category changes
+          if (item.category && item.category !== currentCategory) {
+              currentCategory = item.category;
+              tbody.innerHTML += `
+                  <tr class="table-info category-header-row">
+                      <td colspan="${totalColumns}" class="text-left font-weight-bold">
+                          <i class="fas fa-folder-open mr-2"></i>${item.category}
+                      </td>
+                  </tr>
+              `;
+          }
+
+          let rowHTML = `
+              <tr>
+                  <td>${item.item_code}</td>
+                  <td>${item.item_name}</td>
+                  <td>${item.unit}</td>
+          `;
+
+          item.departments.forEach(qty => {
+              rowHTML += `<td>${qty}</td>`;
+          });
+
+          rowHTML += `
+                  <td>${item.total_quantity}</td>
+                  <td>${item.unit_cost}</td>
+                  <td>${item.total_cost}</td>
+              </tr>
+          `;
+          tbody.innerHTML += rowHTML;
+      });
+  }
+
+  // Load categories for filter
+  function loadCategories() {
+      authenticatedFetch(`${API_BASE_URL}/get_categories.php`)
+          .then(response => response.json())
+          .then(data => {
+              if (data.success) {
+                  const categoryFilter = document.getElementById('categoryFilter');
+                  categoryFilter.innerHTML = '<option value="">Select Category</option>';
+
+                  data.categories.forEach(category => {
+                      categoryFilter.innerHTML += `<option value="${category}">${category}</option>`;
+                  });
+              }
+          })
+          .catch(error => {
+              console.error('Error loading categories:', error);
+          });
+  }
+
+  // Load Category Report Data
+  function loadCategoryReport() {
+      const selectedCategory = document.getElementById('categoryFilter').value;
+      if (!selectedCategory) {
+          alert('Please select a category first.');
+          return;
+      }
+
+      // Show loading
+      const tbody = document.getElementById('categoryReportTableBody');
+      tbody.innerHTML = `
+          <tr>
+              <td colspan="16" class="text-center py-4">
+                  <i class="fas fa-spinner fa-spin fa-2x"></i>
+                  <p class="mt-2">Loading category report...</p>
+              </td>
+          </tr>
+      `;
+
+      authenticatedFetch(`${API_BASE_URL}/api_category_report_data.php?category=${encodeURIComponent(selectedCategory)}`)
+          .then(response => response.json())
+          .then(data => {
+              if (data.success) {
+                  displayCategoryReportData(data.departments, data.data);
+              } else {
+                  document.getElementById('categoryReportTableBody').innerHTML = `
+                      <tr>
+                          <td colspan="16" class="text-center text-danger">
+                              <i class="fas fa-exclamation-triangle"></i> ${data.message || 'Failed to load category report data'}
+                          </td>
+                      </tr>
+                  `;
+              }
+          })
+          .catch(error => {
+              console.error('Error loading category report data:', error);
+              document.getElementById('categoryReportTableBody').innerHTML = `
+                  <tr>
+                      <td colspan="16" class="text-center text-danger">
+                          <i class="fas fa-exclamation-triangle"></i> Error loading category report data
+                      </td>
+                  </tr>
+              `;
+          });
+  }
+
+  // Display Category Report Data
+  function displayCategoryReportData(departments, data) {
+      // Update table header with department names
+      const thead = document.getElementById('categoryReportTableHead');
+      let headerHTML = `
+          <tr>
+              <th>Item Code</th>
+              <th>Item Name & Specifications</th>
+              <th>Unit</th>
+      `;
+
+      departments.forEach(dept => {
+          headerHTML += `<th>${dept}</th>`;
+      });
+
+      headerHTML += `
+              <th>Total Qty</th>
+              <th>Unit Cost</th>
+              <th>Total Cost</th>
+          </tr>
+      `;
+      thead.innerHTML = headerHTML;
+
+      // Update table body
+      const tbody = document.getElementById('categoryReportTableBody');
+      tbody.innerHTML = '';
+
+      if (!data || data.length === 0) {
+          tbody.innerHTML = `
+              <tr>
+                  <td colspan="${6 + departments.length}" class="text-center py-4">
+                      <i class="fas fa-database fa-3x text-muted mb-3"></i>
+                      <h5 class="text-muted">No items found for this category</h5>
+                  </td>
+              </tr>
+          `;
+          return;
+      }
+
       data.forEach(item => {
           let rowHTML = `
               <tr>
@@ -744,6 +947,43 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
           `;
           tbody.innerHTML += rowHTML;
       });
+  }
+
+  // Preview Category Report
+  function previewCategoryReport() {
+      const selectedCategory = document.getElementById('categoryFilter').value;
+      if (!selectedCategory) {
+          alert('Please select a category first.');
+          return;
+      }
+      const token = getAccessToken();
+      window.open('generate_category_report.php?preview=1&category=' + encodeURIComponent(selectedCategory) + '&token=' + encodeURIComponent(token), '_blank');
+  }
+
+  // Download Category Report
+  function downloadCategoryReport() {
+      const selectedCategory = document.getElementById('categoryFilter').value;
+      if (!selectedCategory) {
+          alert('Please select a category first.');
+          return;
+      }
+      if (confirm('Download PDF report for category: ' + selectedCategory + '?')) {
+          const token = getAccessToken();
+          window.location.href = 'generate_category_report.php?category=' + encodeURIComponent(selectedCategory) + '&token=' + encodeURIComponent(token);
+      }
+  }
+
+  // Export Category Report to CSV
+  function exportCategoryReport() {
+      const selectedCategory = document.getElementById('categoryFilter').value;
+      if (!selectedCategory) {
+          alert('Please select a category first.');
+          return;
+      }
+      if (confirm('Export CSV report for category: ' + selectedCategory + '?')) {
+          const token = getAccessToken();
+          window.location.href = 'generate_category_report.php?export=csv&category=' + encodeURIComponent(selectedCategory) + '&token=' + encodeURIComponent(token);
+      }
   }
 
   // Load consolidated items function
@@ -800,7 +1040,20 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
 
       tableBody.innerHTML = '';
 
+      let currentCategory = '';
       items.forEach((item, index) => {
+          // Add category header if category changes
+          if (item.category && item.category !== currentCategory) {
+              currentCategory = item.category;
+              tableBody.innerHTML += `
+                  <tr class="table-info category-header-row">
+                      <td colspan="9" class="text-left font-weight-bold">
+                          <i class="fas fa-folder-open mr-2"></i>${item.category}
+                      </td>
+                  </tr>
+              `;
+          }
+
           tableBody.innerHTML += `
               <tr>
                   <td>${index + 1}</td>
@@ -811,7 +1064,7 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
                   <td><span class="fw-bold text-success">₱${parseFloat(item.unit_cost).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></td>
                   <td>${item.total_quantity}</td>
                   <td><span class="fw-bold text-primary">₱${parseFloat(item.total_cost).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></td>
-                  <td><span class="consolidated-badge">${item.ppmp_count}</span></td>
+                  <td><span class="consolidated-badge">${item.ppmp_numbers}</span></td>
               </tr>
           `;
       });
@@ -917,6 +1170,7 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
   document.addEventListener('DOMContentLoaded', function() {
       new ConsolidatedItemsThemeManager();
       loadAvailableYears();
+      loadCategories();
       loadConsolidatedItems();
       loadAPPReportData();
       loadDepartmentReportData();

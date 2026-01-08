@@ -179,6 +179,7 @@ function loadItems() {
      .then(response => response.json())
      .then(data => {
        itemsList = data.items || [];
+       console.log('DEBUG: Loaded', itemsList.length, 'items from API');
        // Adjust heights for all existing rows after items are loaded
        setTimeout(() => {
          adjustAllRowHeights();
@@ -422,7 +423,14 @@ function savePPMP(status = 'draft', buttonId = null) {
   const planYear = document.getElementById('plan_year').value;
   const classification = 'ANNUAL'; // Default
   const position = 'ADMINISTRATIVE AIDE'; // Default
-  const department = document.getElementById('department').value.trim();
+  // Get department - handle single select combobox
+  const departmentSelect = document.getElementById('department');
+  let department = '';
+  if (departmentSelect && departmentSelect.tagName === 'SELECT') {
+    department = departmentSelect.value.trim();
+  } else if (departmentSelect) {
+    department = departmentSelect.value.trim();
+  }
   const contactPerson = document.getElementById('contact_person').value.trim();
   const address = 'MALAYBALAY CITY'; // Default
 

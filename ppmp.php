@@ -63,6 +63,32 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
 // Set user data for form population
 $user_department = $department;
 $user_contact = $firstname . ' ' . ($middlename ?? '') . ' ' . $lastname . ' ' . ($name_ext ?? '');
+
+// Fetch all departments if user is admin or staff
+$all_departments = [];
+if ($role === 'admin' || $role === 'staff') {
+    $deptApiUrl = $_ENV['API_BASE_URL'] . '/api_get_departments.php';
+    
+    // Create a new context for GET request (the $context is for POST)
+    $deptContext = stream_context_create([
+        'http' => [
+            'method' => 'GET',
+            'header' => [
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $token
+            ],
+            'timeout' => 10
+        ]
+    ]);
+    
+    $deptResponse = @file_get_contents($deptApiUrl, false, $deptContext);
+    if ($deptResponse !== false) {
+        $deptData = json_decode($deptResponse, true);
+        if ($deptData && isset($deptData['status']) && $deptData['status'] === 'success') {
+            $all_departments = $deptData['data'];
+        }
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -554,11 +580,25 @@ $user_contact = $firstname . ' ' . ($middlename ?? '') . ' ' . $lastname . ' ' .
         /* Ensure select dropdown text is always visible */
         select {
             color: var(--text-primary) !important;
-        }
-
-        select option {
-            color: var(--text-primary) !important;
             background: var(--input-bg) !important;
+            border: 1px solid var(--input-border) !important;
+        }
+        
+        select option {
+            color: #1a202c !important;
+            background: #ffffff !important;
+        }
+        
+        /* Ensure department select options are always visible */
+        #department option {
+            color: #1a202c !important;
+            background: #ffffff !important;
+            opacity: 1 !important;
+        }
+        
+        [data-theme="dark"] #department option {
+            color: #ffffff !important;
+            background: #2d3748 !important;
         }
 
         /* Searchable dropdown styles */
@@ -908,7 +948,7 @@ $user_contact = $firstname . ' ' . ($middlename ?? '') . ' ' . $lastname . ' ' .
             </div>
             <div class="col-md-2">
                 <label class="form-label">Plan Year</label>
-                <input type="number" class="form-control" id="plan_year" min="2020" max="2030" value="<?php echo date('Y') + 1; ?>" style="max-width: 120px;">
+                <input type="number" class="form-control" id="plan_year" min="2020" max="2030" value="<?php echo date('Y'); ?>" style="max-width: 120px;">
             </div>
             <div class="col-md-3">
                 <label class="form-label">Classification</label>
@@ -922,8 +962,20 @@ $user_contact = $firstname . ' ' . ($middlename ?? '') . ' ' . $lastname . ' ' .
         <div class="row mb-2">
             <div class="col-md-4">
                 <label class="form-label">Department</label>
-                <input type="text" class="form-control" id="department" value="<?php echo htmlspecialchars($user_department); ?>" placeholder="Auto-populated from user department" readonly>
-                <!-- DEBUG: Final department value: <?php echo htmlspecialchars($user_department); ?> -->
+                <?php if ($role === 'admin' || $role === 'staff'): ?>
+                    <select class="form-control" id="department">
+                        <option value="">-- Select Department --</option>
+                        <?php foreach ($all_departments as $dept): ?>
+                            <option value="<?php echo htmlspecialchars($dept['Department']); ?>"
+                                <?php echo ($dept['Department'] === $user_department) ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($dept['Department']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                <?php else: ?>
+                    <input type="text" class="form-control" id="department" 
+                        value="<?php echo htmlspecialchars($user_department); ?>" readonly>
+                <?php endif; ?>
             </div>
             <div class="col-md-4">
                 <label class="form-label">Contact Person</label>
@@ -1101,7 +1153,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const departmentField = document.getElementById('department');
     const contactField = document.getElementById('contact_person');
 
-    if (departmentField) {
+    // For admin users, department is already set via PHP select element
+    // For staff users, we need to set the value
+    if (departmentField && departmentField.tagName !== 'SELECT') {
         departmentField.value = '<?php echo htmlspecialchars($department); ?>' || '';
     }
     if (contactField) {
