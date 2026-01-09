@@ -1,11 +1,8 @@
 // Helper functions for authentication
 function isLoggedIn() {
   const token = localStorage.getItem('access_token');
-  const tokenExpiresAt = localStorage.getItem('token_expires_at');
-  if (token && tokenExpiresAt) {
-    return Date.now() < parseInt(tokenExpiresAt);
-  }
-  return false;
+  // Since tokens don't expire, just check if token exists
+  return !!token;
 }
 
 function getUserData() {
@@ -17,8 +14,8 @@ function getAccessToken() {
   return localStorage.getItem('access_token');
 }
 
-// Authenticated fetch function with automatic token refresh
-async function authenticatedFetch(url, options = {}) {
+// Authenticated fetch function (no token refresh needed since tokens don't expire)
+function authenticatedFetch(url, options = {}) {
   const token = getAccessToken();
   if (!token) {
     return Promise.reject(new Error('Authentication required'));
@@ -33,83 +30,7 @@ async function authenticatedFetch(url, options = {}) {
     ...options
   };
 
-  try {
-    const response = await fetch(url, defaultOptions);
-
-    // If we get a 401, try to refresh the token and retry the request
-    if (response.status === 401) {
-      console.log('Received 401, attempting token refresh...');
-
-      try {
-        const newToken = await refreshAccessToken();
-        if (newToken) {
-          console.log('Token refreshed, retrying request...');
-          // Retry the request with the new token
-          const retryOptions = {
-            ...defaultOptions,
-            headers: {
-              ...defaultOptions.headers,
-              'Authorization': `Bearer ${newToken}`
-            }
-          };
-          return await fetch(url, retryOptions);
-        } else {
-          console.log('Token refresh failed');
-          return response; // Return the original 401 response
-        }
-      } catch (refreshError) {
-        console.error('Token refresh error:', refreshError);
-        return response; // Return the original 401 response
-      }
-    }
-
-    return response;
-  } catch (error) {
-    console.error('Fetch error:', error);
-    throw error;
-  }
-}
-
-// Function to refresh access token
-function refreshAccessToken() {
-  const refreshToken = localStorage.getItem('refresh_token');
-  if (!refreshToken) {
-    console.log('No refresh token available');
-    return Promise.resolve(null);
-  }
-
-  return fetch(`${API_BASE_URL}/api_refresh_token.php`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ refresh_token: refreshToken })
-  })
-  .then(response => response.json())
-  .then(data => {
-    if (data.status === 'success' && data.tokens) {
-      console.log('Token refresh successful');
-      // Update localStorage with new tokens
-      localStorage.setItem('access_token', data.tokens.access_token);
-      localStorage.setItem('refresh_token', data.tokens.refresh_token);
-      // Convert expires_at timestamp to milliseconds
-      const expiresAt = new Date(data.tokens.expires_at).getTime();
-      localStorage.setItem('token_expires_at', expiresAt);
-      return data.tokens.access_token;
-    } else {
-      console.log('Token refresh failed:', data.message);
-      // Clear tokens if refresh failed
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('token_expires_at');
-      localStorage.removeItem('user_data');
-      return null;
-    }
-  })
-  .catch(error => {
-    console.error('Token refresh network error:', error);
-    return null;
-  });
+  return fetch(url, defaultOptions);
 }
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -124,10 +45,14 @@ let modalSelectedItems = new Set(); // Track items selected in modal
 let currentPage = 1;
 let itemsList = [];
 const rowsPerPage = 10;
+const ITEMS_DISPLAY_LIMIT = 100; // Limit items shown to prevent lag, but search works on all
 
 function initializePPMP() {
   // Load items from API
   loadItems();
+
+  // Load categories for filter
+  loadCategories();
 
   // Initialize pagination
   showPage(1);
@@ -175,22 +100,95 @@ function initializePPMP() {
 }
 
 function loadItems() {
-   return authenticatedFetch(`${API_BASE_URL}/get_items.php`)
-     .then(response => response.json())
-     .then(data => {
-       itemsList = data.items || [];
-       console.log('DEBUG: Loaded', itemsList.length, 'items from API');
-       // Adjust heights for all existing rows after items are loaded
-       setTimeout(() => {
-         adjustAllRowHeights();
-       }, 100);
-       return itemsList; // Return the items for promise chaining
-     })
-     .catch(error => {
-       console.error('Error loading items:', error);
-       return []; // Return empty array on error
-     });
- }
+    // Fetch only 100 items initially to prevent lag
+    return authenticatedFetch(`${API_BASE_URL}/get_items.php?limit=100`)
+      .then(response => {
+        // Check if response is OK
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.text(); // Get text first to check if empty
+      })
+      .then(text => {
+        if (!text || text.trim() === '') {
+          console.warn('Empty response from API');
+          itemsList = [];
+          return [];
+        }
+        try {
+          const data = JSON.parse(text);
+          itemsList = data.items || [];
+          console.log('DEBUG: Loaded', itemsList.length, 'items from API (limited to 100)');
+          // Adjust heights for all existing rows after items are loaded
+          setTimeout(() => {
+            adjustAllRowHeights();
+          }, 100);
+          return itemsList; // Return the items for promise chaining
+        } catch (e) {
+          console.error('Error parsing JSON:', e, 'Response text:', text);
+          itemsList = [];
+          return [];
+        }
+      })
+      .catch(error => {
+        console.error('Error loading items:', error);
+        itemsList = [];
+        return []; // Return empty array on error
+      });
+  }
+
+  // Load categories for filter from API
+  function loadCategories() {
+    authenticatedFetch(`${API_BASE_URL}/get_categories.php`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          const categoryFilter = document.getElementById('itemCategoryFilter');
+          if (categoryFilter) {
+            categoryFilter.innerHTML = '<option value="">All Categories</option>';
+            
+            data.categories.forEach(category => {
+              categoryFilter.innerHTML += `<option value="${category}">${category}</option>`;
+            });
+          }
+        }
+      })
+      .catch(error => {
+        console.error('Error loading categories:', error);
+      });
+  }
+
+  // Search items via API (searches ALL items in database)
+  function searchItemsAPI(searchTerm) {
+    if (!searchTerm || searchTerm.length < 2) {
+      return Promise.resolve([]);
+    }
+    
+    // Add limit=10000 to get all matching items (but search is done on server side)
+    return authenticatedFetch(`${API_BASE_URL}/get_items.php?search=${encodeURIComponent(searchTerm)}&limit=10000`)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.text();
+      })
+      .then(text => {
+        if (!text || text.trim() === '') {
+          return [];
+        }
+        try {
+          const data = JSON.parse(text);
+          return data.items || [];
+        } catch (e) {
+          console.error('Error parsing search results:', e);
+          return [];
+        }
+      })
+      .catch(error => {
+        console.error('Error searching items:', error);
+        return [];
+      });
+  }
 
 function adjustAllRowHeights() {
   const rows = document.querySelectorAll('#itemsTableBody tr');
@@ -205,8 +203,10 @@ function addRow() {
 
     // Filter out already selected items
     const availableItems = itemsList.filter(item => !selectedItems.has(parseInt(item.ID)));
+    // Limit to 100 items for initial display (search will still work on all items)
+    const displayItems = availableItems.slice(0, ITEMS_DISPLAY_LIMIT);
 
-   row.innerHTML = `
+    row.innerHTML = `
         <td>
             <div class="searchable-dropdown">
                 <div class="dropdown-display" tabindex="0">
@@ -215,7 +215,7 @@ function addRow() {
                 <div class="dropdown-menu">
                     <input type="text" class="search-input" placeholder="Search items...">
                     <div class="dropdown-items">
-                        ${availableItems.map(item => `<div class="dropdown-item" data-value="${item.ID}" data-description="${item.Items_Description}" data-unit="${item.Unit}" data-cost="${item.Unit_Cost}" data-code="${item.Item_Code}" data-name="${item.Item_Name}" data-category="${item.Category}">${item.Item_Code ? '[' + item.Item_Code + '] ' : ''}${item.Items_Description}</div>`).join('')}
+                        ${displayItems.map(item => `<div class="dropdown-item" data-value="${item.ID}" data-description="${item.Items_Description}" data-unit="${item.Unit}" data-cost="${item.Unit_Cost}" data-code="${item.Item_Code}" data-name="${item.Item_Name}" data-category="${item.Category}">${item.Item_Code ? '[' + item.Item_Code + '] ' : ''}${item.Items_Description}</div>`).join('')}
                     </div>
                 </div>
             </div>
@@ -242,7 +242,7 @@ function addRow() {
        <td><input type="text" class="form-control total_qty" readonly></td>
        <td><input type="text" class="form-control total_cost" readonly></td>
        <td><button class="btn btn-danger btn-sm" onclick="deleteRow(this)">Delete</button></td>
-   `;
+    `;
 
   // Initialize searchable dropdown
   initializeSearchableDropdown(row);
@@ -295,7 +295,7 @@ function addRowForItem(item) {
        <td><input type="text" class="form-control total_qty" readonly value="0"></td>
        <td><input type="text" class="form-control total_cost" readonly value="0.00"></td>
        <td><button class="btn btn-danger btn-sm" onclick="deleteRow(this)">Delete</button></td>
-   `;
+    `;
 
   // Initialize searchable dropdown
   initializeSearchableDropdown(row);
@@ -388,7 +388,11 @@ function recalculateTotals() {
 
 function updateItemCount() {
   const count = document.querySelectorAll('#itemsTableBody tr').length;
-  document.getElementById('total_items').textContent = count;
+  // Update both total_items elements
+  const paginationCount = document.getElementById('total_items_pagination');
+  const summaryCount = document.getElementById('total_items_summary');
+  if (paginationCount) paginationCount.textContent = count;
+  if (summaryCount) summaryCount.textContent = count;
 }
 
 function updatePagination() {
@@ -802,10 +806,29 @@ function initializeItemSelectionModal() {
     const clearAllBtn = document.getElementById('clearAllBtn');
     const addSelectedBtn = document.getElementById('addSelectedItemsBtn');
 
-    if (searchInput) searchInput.addEventListener('input', filterItems);
+    if (searchInput) {
+        let searchTimeout = null;
+        searchInput.addEventListener('input', function() {
+            // Clear previous timeout
+            if (searchTimeout) {
+                clearTimeout(searchTimeout);
+            }
+            
+            // Debounce the search - wait 300ms after user stops typing
+            searchTimeout = setTimeout(() => {
+                loadItemsIntoModal();
+            }, 300);
+        });
+    }
     if (selectAllBtn) selectAllBtn.addEventListener('click', selectAllItems);
     if (clearAllBtn) clearAllBtn.addEventListener('click', clearAllItems);
     if (addSelectedBtn) addSelectedBtn.addEventListener('click', addSelectedItems);
+    
+    // Add category filter event listener
+    const categoryFilter = document.getElementById('itemCategoryFilter');
+    if (categoryFilter) {
+        categoryFilter.addEventListener('change', filterItems);
+    }
 
     // Fallback function to close modal manually
     function closeModalManually() {
@@ -921,52 +944,120 @@ function openModalManually() {
 
 function loadItemsIntoModal() {
     const container = document.getElementById('itemsListContainer');
-    const availableItems = itemsList.filter(item => !selectedItems.has(parseInt(item.ID)));
+    const searchInput = document.getElementById('itemSearchInput');
+    const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+    const categoryFilter = document.getElementById('itemCategoryFilter') ? document.getElementById('itemCategoryFilter').value : '';
+    
+    // Function to display items in the modal
+    const displayItemsInModal = (items) => {
+        // Filter out already selected items
+        let filteredItems = items.filter(item => !selectedItems.has(parseInt(item.ID)));
+        
+        // Apply category filter (if not already applied via API)
+        if (categoryFilter && !searchTerm) {
+            filteredItems = filteredItems.filter(item => item.Category === categoryFilter);
+        }
+        
+        // Limit to 100 items for display performance
+        const displayItems = filteredItems.slice(0, ITEMS_DISPLAY_LIMIT);
+        const hasMoreItems = filteredItems.length > ITEMS_DISPLAY_LIMIT;
 
-    if (availableItems.length === 0) {
-        container.innerHTML = '<div class="text-center text-muted py-4" style="color: var(--text-muted);">All items have been added to the PPMP</div>';
-        return;
-    }
+        if (displayItems.length === 0) {
+            container.innerHTML = '<div class="text-center text-muted py-4" style="color: var(--text-muted);">' + 
+                (searchTerm || categoryFilter ? 'No items found matching your filters' : 'All items have been added to the PPMP') + '</div>';
+            return;
+        }
 
-    container.innerHTML = availableItems.map(item => `
-        <div class="item-checkbox-container mb-2 p-2 border rounded">
-            <div class="form-check">
-                <input class="form-check-input item-checkbox" type="checkbox" value="${item.ID}" id="item_${item.ID}">
-                <label class="form-check-label" for="item_${item.ID}" style="cursor: pointer; width: 100%;">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div class="flex-grow-1">
-                            <div class="font-weight-bold">
-                                ${item.Item_Code ? '[' + item.Item_Code + '] ' : ''}${item.Item_Name || 'N/A'}
-                            </div>
-                            <div class="small" style="color: lightgreen; font-weight: 500;">
-                                ${item.Items_Description || 'No description'}
-                            </div>
-                            <div class="small">
-                                Unit: ${item.Unit || 'N/A'} | Cost: ₱${parseFloat(item.Unit_Cost || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        container.innerHTML = displayItems.map(item => `
+            <div class="item-checkbox-container mb-2 p-2 border rounded">
+                <div class="form-check">
+                    <input class="form-check-input item-checkbox" type="checkbox" value="${item.ID}" id="item_${item.ID}">
+                    <label class="form-check-label" for="item_${item.ID}" style="cursor: pointer; width: 100%;">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <div class="font-weight-bold" style="color: #3498db;">
+                                    ${item.Item_Code ? '[' + item.Item_Code + '] ' : ''}${item.Item_Name || 'N/A'}
+                                </div>
+                                <div class="small" style="color: var(--text-primary); font-weight: 500;">
+                                    ${item.Items_Description || 'No description'}
+                                </div>
+                                <div class="small">
+                                    <span class="badge badge-secondary" style="background: #27ae60;">${item.Category || 'Uncategorized'}</span> | 
+                                    <span style="color: #ff6600;">Unit: ${item.Unit || 'N/A'}</span> | 
+                                    <span style="color: #ff6600; font-weight: 500;">Cost: ₱${parseFloat(item.Unit_Cost || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </label>
+                    </label>
+                </div>
             </div>
-        </div>
-    `).join('');
+        `).join('') + (hasMoreItems ? `<div class="text-center text-muted py-2" style="color: var(--text-muted); font-size: 0.85rem;">Showing first ${ITEMS_DISPLAY_LIMIT} of ${filteredItems.length} matching items. Refine filters to see more.</div>` : '');
 
-    // Add event listeners to checkboxes
-    document.querySelectorAll('.item-checkbox').forEach(checkbox => {
-        checkbox.addEventListener('change', function() {
-            if (this.checked) {
-                modalSelectedItems.add(parseInt(this.value));
-            } else {
-                modalSelectedItems.delete(parseInt(this.value));
-            }
-            updateSelectedCount();
+        // Add event listeners to checkboxes
+        document.querySelectorAll('.item-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                if (this.checked) {
+                    modalSelectedItems.add(parseInt(this.value));
+                } else {
+                    modalSelectedItems.delete(parseInt(this.value));
+                }
+                updateSelectedCount();
+            });
         });
-    });
 
-    updateSelectedCount();
+        updateSelectedCount();
 
-    // Force theme application to modal content
-    applyThemeToModal();
+        // Force theme application to modal content
+        applyThemeToModal();
+    };
+    
+    // If there's a search term, search the API for all items
+    if (searchTerm && searchTerm.length >= 2) {
+        // Show loading indicator
+        container.innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin"></i> Searching...</div>';
+        
+        searchItemsAPI(searchTerm).then(searchResults => {
+            displayItemsInModal(searchResults);
+        }).catch(error => {
+            console.error('Search error:', error);
+            container.innerHTML = '<div class="text-center text-muted py-4">Error searching items. Please try again.</div>';
+        });
+    } else if (categoryFilter) {
+        // Category filter selected - fetch ALL items for this category from API
+        container.innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin"></i> Loading items by category...</div>';
+        
+        // Fetch all items for the selected category (limit=10000 to get all)
+        authenticatedFetch(`${API_BASE_URL}/get_items.php?category=${encodeURIComponent(categoryFilter)}&limit=10000`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.text();
+            })
+            .then(text => {
+                if (!text || text.trim() === '') {
+                    displayItemsInModal([]);
+                    return;
+                }
+                try {
+                    const data = JSON.parse(text);
+                    const categoryItems = data.items || [];
+                    console.log(`DEBUG: Loaded ${categoryItems.length} items for category: ${categoryFilter}`);
+                    displayItemsInModal(categoryItems);
+                } catch (e) {
+                    console.error('Error parsing category items:', e);
+                    container.innerHTML = '<div class="text-center text-muted py-4">Error loading category items. Please try again.</div>';
+                }
+            })
+            .catch(error => {
+                console.error('Error loading category items:', error);
+                container.innerHTML = '<div class="text-center text-muted py-4">Error loading category items. Please try again.</div>';
+            });
+    } else {
+        // No search term and no category filter - show items from the loaded itemsList
+        const availableItems = itemsList.filter(item => !selectedItems.has(parseInt(item.ID)));
+        displayItemsInModal(availableItems);
+    }
 }
 
 // Function to apply theme to modal content
@@ -993,18 +1084,8 @@ function applyThemeToModal() {
 }
 
 function filterItems() {
-    const searchTerm = document.getElementById('itemSearchInput').value.toLowerCase();
-    const containers = document.querySelectorAll('.item-checkbox-container');
-
-    containers.forEach(container => {
-        const label = container.querySelector('.form-check-label');
-        const text = label.textContent.toLowerCase();
-        if (text.includes(searchTerm)) {
-            container.style.display = 'block';
-        } else {
-            container.style.display = 'none';
-        }
-    });
+    // Re-load items with the current filters (loadItemsIntoModal handles both search and category)
+    loadItemsIntoModal();
 }
 
 function selectAllItems() {
@@ -1024,6 +1105,13 @@ function clearAllItems() {
         modalSelectedItems.delete(parseInt(checkbox.value));
     });
     updateSelectedCount();
+    
+    // Clear search input and reload original 100 items
+    const searchInput = document.getElementById('itemSearchInput');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+    loadItemsIntoModal();
 }
 
 function updateSelectedCount() {
@@ -1078,50 +1166,128 @@ function initializeSearchableDropdown(row) {
         }
     });
 
-    // Search functionality
+    // Search functionality - searches ALL items via API
+    let searchTimeout = null;
     searchInput.addEventListener('input', function() {
         const searchTerm = this.value.toLowerCase();
-        let hasResults = false;
-
-        items.forEach(item => {
-            const text = item.textContent.toLowerCase();
-            if (text.includes(searchTerm)) {
-                item.style.display = 'block';
-                hasResults = true;
-            } else {
-                item.style.display = 'none';
-            }
-        });
-
-        // Show no results message
-        let noResults = dropdown.querySelector('.no-results');
-        if (!hasResults) {
-            if (!noResults) {
-                noResults = document.createElement('div');
-                noResults.className = 'no-results';
-                noResults.textContent = 'No items found';
-                dropdown.querySelector('.dropdown-items').appendChild(noResults);
-            }
-            noResults.style.display = 'block';
-        } else if (noResults) {
-            noResults.style.display = 'none';
+        
+        // Clear previous timeout
+        if (searchTimeout) {
+            clearTimeout(searchTimeout);
         }
-
-        currentFocus = -1;
+        
+        if (searchTerm.length === 0) {
+            // Reset to show only first 100 items (non-selected items)
+            const dropdownItems = dropdown.querySelector('.dropdown-items');
+            dropdownItems.innerHTML = '';
+            
+            // Rebuild with first 100 non-selected items from itemsList
+            let displayCount = 0;
+            itemsList.forEach(item => {
+                if (displayCount >= ITEMS_DISPLAY_LIMIT) return;
+                if (selectedItems.has(parseInt(item.ID))) return;
+                
+                const div = document.createElement('div');
+                div.className = 'dropdown-item';
+                div.setAttribute('data-value', item.ID);
+                div.setAttribute('data-description', item.Items_Description || '');
+                div.setAttribute('data-unit', item.Unit || '');
+                div.setAttribute('data-cost', item.Unit_Cost || '0');
+                div.setAttribute('data-code', item.Item_Code || '');
+                div.setAttribute('data-name', item.Item_Name || '');
+                div.setAttribute('data-category', item.Category || '');
+                div.textContent = (item.Item_Code ? '[' + item.Item_Code + '] ' : '') + item.Items_Description;
+                div.addEventListener('click', function() {
+                    selectItem(this);
+                });
+                dropdownItems.appendChild(div);
+                displayCount++;
+            });
+            
+            const noResults = dropdown.querySelector('.no-results');
+            if (noResults) noResults.style.display = 'none';
+            currentFocus = -1;
+            return;
+        }
+        
+        // Debounce search - wait 300ms after user stops typing
+        searchTimeout = setTimeout(async () => {
+            // Show loading indicator
+            const loadingIndicator = dropdown.querySelector('.search-loading');
+            if (loadingIndicator) loadingIndicator.style.display = 'block';
+            
+            // Search ALL items via API
+            const searchResults = await searchItemsAPI(searchTerm);
+            
+            // Hide loading indicator
+            if (loadingIndicator) loadingIndicator.style.display = 'none';
+            
+            // Filter out already selected items
+            const availableItems = searchResults.filter(item => !selectedItems.has(parseInt(item.ID)));
+            
+            // Rebuild dropdown with search results (up to 100 items)
+            const dropdownItems = dropdown.querySelector('.dropdown-items');
+            dropdownItems.innerHTML = '';
+            
+            let displayCount = 0;
+            availableItems.forEach(item => {
+                if (displayCount >= ITEMS_DISPLAY_LIMIT) return;
+                
+                const div = document.createElement('div');
+                div.className = 'dropdown-item';
+                div.setAttribute('data-value', item.ID);
+                div.setAttribute('data-description', item.Items_Description || '');
+                div.setAttribute('data-unit', item.Unit || '');
+                div.setAttribute('data-cost', item.Unit_Cost || '0');
+                div.setAttribute('data-code', item.Item_Code || '');
+                div.setAttribute('data-name', item.Item_Name || '');
+                div.setAttribute('data-category', item.Category || '');
+                div.textContent = (item.Item_Code ? '[' + item.Item_Code + '] ' : '') + item.Items_Description;
+                div.addEventListener('click', function() {
+                    selectItem(this);
+                });
+                dropdownItems.appendChild(div);
+                displayCount++;
+            });
+            
+            // Show no results message
+            const noResults = dropdown.querySelector('.no-results') || document.createElement('div');
+            noResults.className = 'no-results';
+            noResults.textContent = 'No items found';
+            
+            if (availableItems.length === 0) {
+                noResults.style.display = 'block';
+                dropdownItems.appendChild(noResults);
+            } else {
+                noResults.style.display = 'none';
+            }
+            
+            // Update items reference for keyboard navigation
+            const newItems = dropdown.querySelectorAll('.dropdown-item');
+            newItems.forEach((item, index) => {
+                item.addEventListener('click', function() {
+                    selectItem(this);
+                });
+            });
+            
+            currentFocus = -1;
+        }, 300); // 300ms debounce
     });
 
-    // Keyboard navigation
+    // Keyboard navigation - use dynamic items from DOM
     searchInput.addEventListener('keydown', function(e) {
-        const visibleItems = Array.from(items).filter(item => item.style.display !== 'none');
+        // Get current visible items from DOM (dynamic, after search)
+        const dropdownItems = dropdown.querySelector('.dropdown-items');
+        const visibleItems = Array.from(dropdownItems.querySelectorAll('.dropdown-item')).filter(item => item.style.display !== 'none');
 
         if (e.key === 'ArrowDown') {
             e.preventDefault();
             currentFocus = Math.min(currentFocus + 1, visibleItems.length - 1);
-            updateFocus();
+            updateFocus(visibleItems);
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
             currentFocus = Math.max(currentFocus - 1, -1);
-            updateFocus();
+            updateFocus(visibleItems);
         } else if (e.key === 'Enter') {
             e.preventDefault();
             if (currentFocus >= 0 && visibleItems[currentFocus]) {
@@ -1152,8 +1318,10 @@ function initializeSearchableDropdown(row) {
         dropdown.classList.add('open');
         searchInput.focus();
         searchInput.value = '';
-        // Reset all items to visible
-        items.forEach(item => item.style.display = 'block');
+        // Reset all items to visible (first 100)
+        items.forEach((item, index) => {
+            item.style.display = index < ITEMS_DISPLAY_LIMIT ? 'block' : 'none';
+        });
         const noResults = dropdown.querySelector('.no-results');
         if (noResults) noResults.style.display = 'none';
     }
@@ -1216,9 +1384,10 @@ function initializeSearchableDropdown(row) {
         closeDropdown();
     }
 
-    function updateFocus() {
-        items.forEach(item => item.classList.remove('highlighted'));
-        const visibleItems = Array.from(items).filter(item => item.style.display !== 'none');
+    function updateFocus(visibleItems) {
+        // Remove highlighted from all items in dropdown-items
+        const dropdownItems = dropdown.querySelector('.dropdown-items');
+        dropdownItems.querySelectorAll('.dropdown-item').forEach(item => item.classList.remove('highlighted'));
 
         if (currentFocus >= 0 && visibleItems[currentFocus]) {
             visibleItems[currentFocus].classList.add('highlighted');

@@ -1029,7 +1029,7 @@ if ($role === 'admin' || $role === 'staff') {
         <button class="btn btn-sm btn-primary" id="prevPage" onclick="changePage(-1)" disabled>⬅️ Prev</button>
         <span class="text-muted small">
             Page <span id="currentPage">1</span> of <span id="totalPages">1</span>
-            (<span id="total_items">0</span> items)
+            (<span id="total_items_pagination">0</span> items)
         </span>
         <button class="btn btn-sm btn-primary" id="nextPage" onclick="changePage(1)">Next ➡️</button>
     </div>
@@ -1052,7 +1052,17 @@ if ($role === 'admin' || $role === 'staff') {
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
-                        <input type="text" class="form-control" id="itemSearchInput" placeholder="Search items..." style="background: var(--input-bg); color: var(--text-primary); border: 1px solid var(--input-border);">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <input type="text" class="form-control" id="itemSearchInput" placeholder="Search items by name, code, or description..." style="background: var(--input-bg); color: var(--text-primary); border: 1px solid var(--input-border);">
+                            </div>
+                            <div class="col-md-4">
+                                <select class="form-control" id="itemCategoryFilter" style="background: var(--input-bg); color: var(--text-primary); border: 1px solid var(--input-border);">
+                                    <option value="">All Categories</option>
+                                    <!-- Categories will be loaded dynamically -->
+                                </select>
+                            </div>
+                        </div>
                     </div>
                     <div class="mb-3">
                         <div class="d-flex justify-content-between align-items-center">
@@ -1081,7 +1091,7 @@ if ($role === 'admin' || $role === 'staff') {
     <div class="form-section">
         <div class="row">
             <div class="col-md-4">
-                <strong>Total Items:</strong> <span id="total_items">0</span>
+                <strong>Total Items:</strong> <span id="total_items_summary">0</span>
             </div>
             <div class="col-md-4">
                 <strong>Total Cost:</strong> ₱<span id="grand_total">0.00</span>
