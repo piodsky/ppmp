@@ -666,7 +666,7 @@ $user_role = 'user'; // Will be populated by JavaScript
                                 <img id="regProfilePreviewImg" src="" alt="Profile Preview" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid var(--border-light);">
                             </div>
                         </div>
-                        <small class="text-muted">JPG, PNG, GIF or WebP. Max 5MB.</small>
+                        <small class="text-muted">JPG, PNG, GIF or WebP. Max 2MB.</small>
                     </div>
                 </form>
             </div>
@@ -992,9 +992,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 }
 
-                // Validate file size (5MB max)
-                if (file.size > 5 * 1024 * 1024) {
-                    showRegisterError('File size must be less than 5MB.');
+                // Validate file size (2MB max)
+                if (file.size > 2 * 1024 * 1024) {
+                    showRegisterError('File size must be less than 2MB.');
                     fileInput.value = '';
                     previewDiv.style.display = 'none';
                     return;
@@ -1028,7 +1028,13 @@ async function handleRegister() {
     const confirmPassword = document.getElementById('regConfirmPassword').value.trim();
     const role = document.getElementById('regRole').value;
     const departmentId = document.getElementById('regDepartment').value;
-    const profilePicture = document.getElementById('regProfilePicture').files[0];
+    let profilePicture = document.getElementById('regProfilePicture').files[0];
+    if (profilePicture && profilePicture.size > 1024 * 1024) {
+        console.log('Compressing image...');
+        let compressedBlob = await compressImage(profilePicture);
+        profilePicture = new File([compressedBlob], profilePicture.name, { type: profilePicture.type });
+        console.log('Compressed image size:', profilePicture.size);
+    }
     const editId = document.getElementById('registerForm').getAttribute('data-edit-id');
     const isEdit = editId !== null;
 
@@ -1094,8 +1100,8 @@ async function handleRegister() {
             showRegisterError('Please select a valid image file (JPG, PNG, GIF, or WebP).');
             return;
         }
-        if (profilePicture.size > 5 * 1024 * 1024) {
-            showRegisterError('Profile picture must be less than 5MB.');
+        if (profilePicture.size > 2 * 1024 * 1024) {
+            showRegisterError('Profile picture must be less than 2MB.');
             return;
         }
     }
@@ -1235,6 +1241,33 @@ function setupPasswordToggles() {
                 icon.className = 'fas fa-eye';
             }
         });
+    });
+}
+
+async function compressImage(file, maxWidth = 800, maxHeight = 800, quality = 0.8) {
+    return new Promise((resolve) => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        img.onload = () => {
+            let { width, height } = img;
+            if (width > height) {
+                if (width > maxWidth) {
+                    height = (height * maxWidth) / width;
+                    width = maxWidth;
+                }
+            } else {
+                if (height > maxHeight) {
+                    width = (width * maxHeight) / height;
+                    height = maxHeight;
+                }
+            }
+            canvas.width = width;
+            canvas.height = height;
+            ctx.drawImage(img, 0, 0, width, height);
+            canvas.toBlob(resolve, file.type, quality);
+        };
+        img.src = URL.createObjectURL(file);
     });
 }
 
