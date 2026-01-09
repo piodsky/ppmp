@@ -174,13 +174,13 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
           font-weight: 600;
       }
 
-      /* Center text for monthly columns (Jan-Dec) and department columns */
-      #appReportTable td:nth-child(n+4):nth-child(-n+15),
+      /* Center text for quarterly columns and department columns */
+      #appReportTable td:nth-child(n+4):nth-child(-n+19),
       #deptReportTable td:nth-child(n+4):nth-child(-n+13) {
           text-align: center;
       }
 
-      #appReportTable th:nth-child(n+4):nth-child(-n+15),
+      #appReportTable th:nth-child(n+4):nth-child(-n+19),
       #deptReportTable th:nth-child(n+4):nth-child(-n+13) {
           text-align: center;
       }
@@ -369,26 +369,38 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
                     <th>Item Code</th>
                     <th>Item Name & Specifications</th>
                     <th>Unit</th>
-                    <th>Jan</th>
-                    <th>Feb</th>
-                    <th>Mar</th>
-                    <th>Apr</th>
-                    <th>May</th>
-                    <th>Jun</th>
-                    <th>Jul</th>
-                    <th>Aug</th>
-                    <th>Sep</th>
-                    <th>Oct</th>
-                    <th>Nov</th>
-                    <th>Dec</th>
+                    <th colspan="4" class="text-center bg-info text-white">Q1 (Jan-Mar)</th>
+                    <th colspan="4" class="text-center bg-info text-white">Q2 (Apr-Jun)</th>
+                    <th colspan="4" class="text-center bg-info text-white">Q3 (Jul-Sep)</th>
+                    <th colspan="4" class="text-center bg-info text-white">Q4 (Oct-Dec)</th>
                     <th>Total Qty</th>
                     <th>Unit Cost</th>
                     <th>Total Cost</th>
                   </tr>
+                  <tr class="bg-light">
+                    <th colspan="3"></th>
+                    <th>Jan</th>
+                    <th>Feb</th>
+                    <th>Mar</th>
+                    <th>Q1 Amount</th>
+                    <th>Apr</th>
+                    <th>May</th>
+                    <th>Jun</th>
+                    <th>Q2 Amount</th>
+                    <th>Jul</th>
+                    <th>Aug</th>
+                    <th>Sep</th>
+                    <th>Q3 Amount</th>
+                    <th>Oct</th>
+                    <th>Nov</th>
+                    <th>Dec</th>
+                    <th>Q4 Amount</th>
+                    <th colspan="3"></th>
+                  </tr>
                 </thead>
                 <tbody id="appReportTableBody">
                   <tr>
-                    <td colspan="18" class="text-center">
+                    <td colspan="24" class="text-center">
                       <i class="fas fa-spinner fa-spin"></i> Loading APP report data...
                     </td>
                   </tr>
@@ -668,7 +680,7 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
               } else {
                   document.getElementById('appReportTableBody').innerHTML = `
                       <tr>
-                          <td colspan="18" class="text-center text-danger">
+                          <td colspan="23" class="text-center text-danger">
                               <i class="fas fa-exclamation-triangle"></i> ${data.message || 'Failed to load APP report data'}
                           </td>
                       </tr>
@@ -679,7 +691,7 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
               console.error('Error loading APP report data:', error);
               document.getElementById('appReportTableBody').innerHTML = `
                   <tr>
-                      <td colspan="18" class="text-center text-danger">
+                      <td colspan="23" class="text-center text-danger">
                           <i class="fas fa-exclamation-triangle"></i> Error loading APP report data
                       </td>
                   </tr>
@@ -697,13 +709,13 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
               // Category header row
               tbody.innerHTML += `
                   <tr class="table-info">
-                      <td colspan="18" class="text-left font-weight-bold">
+                      <td colspan="24" class="text-left font-weight-bold">
                           <i class="fas fa-folder-open mr-2"></i>${item.name}
                       </td>
                   </tr>
               `;
           } else {
-              // Item data row
+              // Item data row - Q1: Jan-Mar, Q2: Apr-Jun, Q3: Jul-Sep, Q4: Oct-Dec
               tbody.innerHTML += `
                   <tr>
                       <td>${item.item_code}</td>
@@ -712,15 +724,19 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
                       <td>${item.jan_qty}</td>
                       <td>${item.feb_qty}</td>
                       <td>${item.mar_qty}</td>
+                      <td class="font-weight-bold text-primary">${item.q1_amount}</td>
                       <td>${item.apr_qty}</td>
                       <td>${item.may_qty}</td>
                       <td>${item.jun_qty}</td>
+                      <td class="font-weight-bold text-primary">${item.q2_amount}</td>
                       <td>${item.jul_qty}</td>
                       <td>${item.aug_qty}</td>
                       <td>${item.sep_qty}</td>
+                      <td class="font-weight-bold text-primary">${item.q3_amount}</td>
                       <td>${item.oct_qty}</td>
                       <td>${item.nov_qty}</td>
                       <td>${item.dec_qty}</td>
+                      <td class="font-weight-bold text-primary">${item.q4_amount}</td>
                       <td>${item.total_quantity}</td>
                       <td>${item.unit_cost}</td>
                       <td>${item.total_cost}</td>

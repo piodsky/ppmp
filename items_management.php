@@ -508,7 +508,8 @@ $user_role = $role;
                                 </div>
                                 <div class="col-md-2">
                                     <label class="form-label small fw-bold">Category</label>
-                                    <input type="text" class="form-control form-control-sm bg-light" placeholder="Other Supplies" name="category[]" value="Other Supplies" readonly>
+                                    <input type="text" class="form-control form-control-sm" list="categoryOptions" placeholder="Select or type category" name="category[]" oninput="handleCategoryInput(this)" autocomplete="off">
+                                    <datalist id="categoryOptions"></datalist>
                                 </div>
                                 <div class="col-md-1">
                                     <button type="button" class="btn btn-outline-danger btn-sm w-100 remove-item" style="display: none;" title="Remove this item">
@@ -978,6 +979,8 @@ function showError(message, tableBodyId, colspan) {
 
 // Add Items Modal Functions
 function showAddItemsModal() {
+    // Load categories when opening modal
+    loadCategories();
     const modal = new bootstrap.Modal(document.getElementById('addItemsModal'));
     modal.show();
 }
@@ -1017,6 +1020,76 @@ document.addEventListener('click', function(e) {
 
 // Global variable to store current suggestions
 let currentSuggestions = [];
+let categoryOptionsLoaded = false;
+
+// Function to load categories from API
+function loadCategories() {
+    const datalist = document.getElementById('categoryOptions');
+    if (!datalist || categoryOptionsLoaded) return;
+    
+    authenticatedFetch(`${API_BASE_URL}/get_categories.php`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.categories) {
+                datalist.innerHTML = '';
+                data.categories.forEach(category => {
+                    const option = document.createElement('option');
+                    option.value = category;
+                    datalist.appendChild(option);
+                });
+                categoryOptionsLoaded = true;
+            }
+        })
+        .catch(error => {
+            console.error('Error loading categories:', error);
+        });
+}
+
+// Function to handle category input
+function handleCategoryInput(inputElement) {
+    // Load categories if not loaded yet
+    if (!categoryOptionsLoaded) {
+        loadCategories();
+    }
+}
+
+// Add event listener to load categories when modal opens
+const addItemsModal = document.getElementById('addItemsModal');
+if (addItemsModal) {
+    addItemsModal.addEventListener('shown.bs.modal', function() {
+        loadCategories();
+    });
+}
+
+// Modified add row button event listener to handle category field properly
+document.getElementById('addRowBtn').addEventListener('click', function() {
+    const container = document.getElementById('itemsContainer');
+    const newRow = container.querySelector('.item-row').cloneNode(true);
+
+    // Reset all inputs and selects
+    newRow.querySelectorAll('input').forEach(input => {
+        if (input.name === 'category[]') {
+            // Reset category but keep the datalist reference
+            input.value = '';
+        } else {
+            input.value = '';
+            // Remove datalist attribute to create new one
+            input.removeAttribute('list');
+            // Clear any stored properties
+            delete input.lastValue;
+            delete input.suggestions;
+        }
+    });
+    newRow.querySelectorAll('select').forEach(select => select.selectedIndex = 0);
+
+    // Show the remove button for the new row
+    const removeBtn = newRow.querySelector('.remove-item');
+    if (removeBtn) {
+        removeBtn.style.display = 'block';
+    }
+
+    container.appendChild(newRow);
+});
 
 // Function to handle item input and fetch suggestions
 function handleItemInput(inputElement, type = 'name') {
