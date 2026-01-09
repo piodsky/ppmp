@@ -247,26 +247,38 @@ class APPCSEPDF extends FPDF {
         $this->SetFillColor(200, 200, 200);
         $this->SetTextColor(0, 0, 0);
 
-        // Multi-row header
+        // Multi-row header with quarterly amounts
         $this->Cell(18, 10, 'Item Code', 1, 0, 'C', true);
-        $this->Cell(55, 10, 'Item & Specifications', 1, 0, 'C', true);
-        $this->Cell(8, 10, 'Unit of Measure', 1, 0, 'C', true);
+        $this->Cell(45, 10, 'Item & Specifications', 1, 0, 'C', true);
+        $this->Cell(8, 10, 'Unit', 1, 0, 'C', true);
 
-        // Monthly columns - spanning header
-        $this->Cell(120, 5, 'Monthly Quantity Requirement', 1, 0, 'C', true);
-        $this->Cell(30, 10, 'Total Quantity for the year', 1, 0, 'C', true);
-        $this->Cell(35, 10, 'Unit Price as of May 14, 2025', 1, 0, 'C', true);
-        $this->Cell(35, 10, 'Total Amount for the year', 1, 1, 'C', true);
+        // Q1 (Jan-Mar)
+        $this->Cell(8, 10, 'Jan', 1, 0, 'C', true);
+        $this->Cell(8, 10, 'Feb', 1, 0, 'C', true);
+        $this->Cell(8, 10, 'Mar', 1, 0, 'C', true);
+        $this->Cell(15, 10, 'Q1 Amt', 1, 0, 'C', true);
 
-        // Second row of header
-        $this->SetXY(10, $this->GetY() - 5);
-        $this->Cell(81, 5, '', 0, 0); // Skip first 3 columns (18+55+8=81)
+        // Q2 (Apr-Jun)
+        $this->Cell(8, 10, 'Apr', 1, 0, 'C', true);
+        $this->Cell(8, 10, 'May', 1, 0, 'C', true);
+        $this->Cell(8, 10, 'Jun', 1, 0, 'C', true);
+        $this->Cell(15, 10, 'Q2 Amt', 1, 0, 'C', true);
 
-        $months = array('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec');
-        foreach($months as $month) {
-            $this->Cell(10, 5, $month, 1, 0, 'C', true);
-        }
-        $this->Ln(5);
+        // Q3 (Jul-Sep)
+        $this->Cell(8, 10, 'Jul', 1, 0, 'C', true);
+        $this->Cell(8, 10, 'Aug', 1, 0, 'C', true);
+        $this->Cell(8, 10, 'Sep', 1, 0, 'C', true);
+        $this->Cell(15, 10, 'Q3 Amt', 1, 0, 'C', true);
+
+        // Q4 (Oct-Dec)
+        $this->Cell(8, 10, 'Oct', 1, 0, 'C', true);
+        $this->Cell(8, 10, 'Nov', 1, 0, 'C', true);
+        $this->Cell(8, 10, 'Dec', 1, 0, 'C', true);
+        $this->Cell(15, 10, 'Q4 Amt', 1, 0, 'C', true);
+
+        $this->Cell(15, 10, 'Total Qty', 1, 0, 'C', true);
+        $this->Cell(18, 10, 'Unit Cost', 1, 0, 'C', true);
+        $this->Cell(20, 10, 'Total Amount', 1, 1, 'C', true);
     }
 
     // Table row
@@ -274,7 +286,7 @@ class APPCSEPDF extends FPDF {
         $this->SetFont('Arial', '', 5);
         $this->SetTextColor(0, 0, 0);
 
-        $widths = array(18, 55, 8, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 30, 35, 35);
+        $widths = array(18, 45, 8, 8, 8, 8, 15, 8, 8, 8, 15, 8, 8, 8, 15, 8, 8, 8, 15, 15, 18, 20);
 
         // Calculate max lines for the row
         $max_lines = 1;
@@ -287,7 +299,11 @@ class APPCSEPDF extends FPDF {
         $startY = $this->GetY();
         for($i = 0; $i < count($data); $i++) {
             $x = $this->GetX();
-            $align = ($i >= 3 && $i <= 14) ? 'C' : 'L';
+            $align = 'L';
+            // Center align for quantity and amount columns
+            if ($i >= 3 && $i <= 19) {
+                $align = 'C';
+            }
             $this->MultiCell($widths[$i], 4, $data[$i], 1, $align);
             $this->SetXY($x + $widths[$i], $startY);
         }
@@ -529,6 +545,12 @@ try {
         $pdf->Cell(0, 8, strtoupper($category), 1, 1, 'L', true);
 
         foreach($categoryItems as $item) {
+            // Calculate quarterly amounts
+            $q1_amount = ($item['jan_qty'] + $item['feb_qty'] + $item['mar_qty']) * $item['Unit_Cost'];
+            $q2_amount = ($item['apr_qty'] + $item['may_qty'] + $item['jun_qty']) * $item['Unit_Cost'];
+            $q3_amount = ($item['jul_qty'] + $item['aug_qty'] + $item['sep_qty']) * $item['Unit_Cost'];
+            $q4_amount = ($item['oct_qty'] + $item['nov_qty'] + $item['dec_qty']) * $item['Unit_Cost'];
+
             $data = array(
                 $item['Item_Code'] ?: '',
                 $item['Item_Name'] . ' - ' . $item['Item_Description'],
@@ -536,15 +558,19 @@ try {
                 $item['jan_qty'] > 0 ? $item['jan_qty'] : '',
                 $item['feb_qty'] > 0 ? $item['feb_qty'] : '',
                 $item['mar_qty'] > 0 ? $item['mar_qty'] : '',
+                $q1_amount > 0 ? 'P' . number_format($q1_amount, 2) : '',
                 $item['apr_qty'] > 0 ? $item['apr_qty'] : '',
                 $item['may_qty'] > 0 ? $item['may_qty'] : '',
                 $item['jun_qty'] > 0 ? $item['jun_qty'] : '',
+                $q2_amount > 0 ? 'P' . number_format($q2_amount, 2) : '',
                 $item['jul_qty'] > 0 ? $item['jul_qty'] : '',
                 $item['aug_qty'] > 0 ? $item['aug_qty'] : '',
                 $item['sep_qty'] > 0 ? $item['sep_qty'] : '',
+                $q3_amount > 0 ? 'P' . number_format($q3_amount, 2) : '',
                 $item['oct_qty'] > 0 ? $item['oct_qty'] : '',
                 $item['nov_qty'] > 0 ? $item['nov_qty'] : '',
                 $item['dec_qty'] > 0 ? $item['dec_qty'] : '',
+                $q4_amount > 0 ? 'P' . number_format($q4_amount, 2) : '',
                 number_format($item['total_quantity']),
                 'P' . number_format($item['Unit_Cost'], 2),
                 'P' . number_format($item['total_cost'], 2)
