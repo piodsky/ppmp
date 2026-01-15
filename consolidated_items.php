@@ -175,12 +175,12 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
       }
 
       /* Center text for quarterly columns and department columns */
-      #appReportTable td:nth-child(n+4):nth-child(-n+19),
+      #appReportTable td:nth-child(n+4):nth-child(-n+23),
       #deptReportTable td:nth-child(n+4):nth-child(-n+13) {
           text-align: center;
       }
 
-      #appReportTable th:nth-child(n+4):nth-child(-n+19),
+      #appReportTable th:nth-child(n+4):nth-child(-n+23),
       #deptReportTable th:nth-child(n+4):nth-child(-n+13) {
           text-align: center;
       }
@@ -250,50 +250,23 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
       <div class="card shadow">
         <div class="card-header d-flex justify-content-between align-items-center">
           <h5 class="mb-0">📊 Consolidated Items</h5>
-          <div class="d-flex justify-content-end flex-wrap gap-2">
-            <div class="dropdown btn-group">
-              <button class="btn btn-primary" onclick="previewAPPReport()">
-                <i class="fas fa-calendar-alt"></i> APP Report
-              </button>
-              <button class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-toggle="dropdown" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                <span class="sr-only">Toggle Dropdown</span>
-              </button>
-              <div class="dropdown-menu">
-                <a class="dropdown-item" href="#" onclick="downloadAPPReport()">
-                  <i class="fas fa-download"></i> Download PDF
-                </a>
-              </div>
-            </div>
-            <button class="btn btn-success" onclick="exportConsolidated()">
-              <i class="fas fa-download"></i> Export
-            </button>
-            <div class="dropdown">
-              <button class="btn btn-warning dropdown-toggle" type="button" data-toggle="dropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="fas fa-building"></i> Dept Report <span class="caret"></span>
-              </button>
-              <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="#" onclick="previewDepartmentReport()"><i class="fas fa-eye"></i> Preview PDF</a></li>
-                <li><a class="dropdown-item" href="#" onclick="downloadDepartmentReport()"><i class="fas fa-download"></i> Download PDF</a></li>
-                <li><a class="dropdown-item" href="#" onclick="exportDepartmentReport()"><i class="fas fa-file-csv"></i> Export CSV</a></li>
-              </ul>
-            </div>
-            <button class="btn btn-info" onclick="loadConsolidatedItems()">
-              <i class="fas fa-sync"></i> Refresh
-            </button>
-            <div class="dropdown btn-group">
-              <button class="btn btn-danger" onclick="previewPDF()">
-                <i class="fas fa-eye"></i> Preview PDF
-              </button>
-              <button class="btn btn-danger dropdown-toggle dropdown-toggle-split" data-toggle="dropdown" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                <span class="sr-only">Toggle Dropdown</span>
-              </button>
-              <div class="dropdown-menu">
-                <a class="dropdown-item" href="#" onclick="exportToPDF()">
-                  <i class="fas fa-download"></i> Download PDF
-                </a>
-              </div>
-            </div>
-          </div>
+           <div class="d-flex justify-content-end flex-wrap gap-2">
+             <div class="dropdown">
+               <button class="btn btn-success btn-lg dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                 <i class="fas fa-file-excel"></i> Excel Report
+               </button>
+               <ul class="dropdown-menu">
+                 <li><a class="dropdown-item" href="#" onclick="exportConsolidatedItems()"><i class="fas fa-list"></i> Consolidated Items</a></li>
+                 <li><a class="dropdown-item" href="#" onclick="exportAPPReport()"><i class="fas fa-calendar-alt"></i> APP Report (Annual Procurement Plan)</a></li>
+                 <li><a class="dropdown-item" href="#" onclick="exportDepartmentReport()"><i class="fas fa-building"></i> Department Report</a></li>
+                 <li><a class="dropdown-item" href="#" onclick="exportAllCategoriesReport()"><i class="fas fa-tags"></i> Category Report (All Categories)</a></li>
+                 <li><a class="dropdown-item" href="#" onclick="exportSummaryReport()"><i class="fas fa-chart-bar"></i> Summary</a></li>
+               </ul>
+             </div>
+             <button class="btn btn-info" onclick="loadConsolidatedItems()">
+               <i class="fas fa-sync"></i> Refresh
+             </button>
+           </div>
         </div>
         <div class="card-body">
           <div class="row mb-3">
@@ -369,10 +342,10 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
                     <th>Item Code</th>
                     <th>Item Name & Specifications</th>
                     <th>Unit</th>
-                    <th colspan="4" class="text-center bg-info text-white">Q1 (Jan-Mar)</th>
-                    <th colspan="4" class="text-center bg-info text-white">Q2 (Apr-Jun)</th>
-                    <th colspan="4" class="text-center bg-info text-white">Q3 (Jul-Sep)</th>
-                    <th colspan="4" class="text-center bg-info text-white">Q4 (Oct-Dec)</th>
+                    <th colspan="5" class="text-center bg-info text-white">Q1 (Jan-Mar)</th>
+                    <th colspan="5" class="text-center bg-info text-white">Q2 (Apr-Jun)</th>
+                    <th colspan="5" class="text-center bg-info text-white">Q3 (Jul-Sep)</th>
+                    <th colspan="5" class="text-center bg-info text-white">Q4 (Oct-Dec)</th>
                     <th>Total Qty</th>
                     <th>Unit Cost</th>
                     <th>Total Cost</th>
@@ -382,25 +355,29 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
                     <th>Jan</th>
                     <th>Feb</th>
                     <th>Mar</th>
+                    <th>Q1</th>
                     <th>Q1 Amount</th>
                     <th>Apr</th>
                     <th>May</th>
                     <th>Jun</th>
+                    <th>Q2</th>
                     <th>Q2 Amount</th>
                     <th>Jul</th>
                     <th>Aug</th>
                     <th>Sep</th>
+                    <th>Q3</th>
                     <th>Q3 Amount</th>
                     <th>Oct</th>
                     <th>Nov</th>
                     <th>Dec</th>
+                    <th>Q4</th>
                     <th>Q4 Amount</th>
                     <th colspan="3"></th>
                   </tr>
                 </thead>
                 <tbody id="appReportTableBody">
                   <tr>
-                    <td colspan="24" class="text-center">
+                    <td colspan="26" class="text-center">
                       <i class="fas fa-spinner fa-spin"></i> Loading APP report data...
                     </td>
                   </tr>
@@ -460,19 +437,12 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
                 </button>
               </div>
               <div class="col-md-4">
-                <div class="dropdown btn-group">
-                  <button class="btn btn-danger" onclick="previewCategoryReport()">
-                    <i class="fas fa-eye"></i> Preview PDF
                   </button>
                   <button class="btn btn-danger dropdown-toggle dropdown-toggle-split" data-toggle="dropdown" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                    <span class="sr-only">Toggle Dropdown</span>
                   </button>
-                  <div class="dropdown-menu">
                     <a class="dropdown-item" href="#" onclick="downloadCategoryReport()">
-                      <i class="fas fa-download"></i> Download PDF
                     </a>
                     <a class="dropdown-item" href="#" onclick="exportCategoryReport()">
-                      <i class="fas fa-file-csv"></i> Export CSV
                     </a>
                   </div>
                 </div>
@@ -680,7 +650,7 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
               } else {
                   document.getElementById('appReportTableBody').innerHTML = `
                       <tr>
-                          <td colspan="23" class="text-center text-danger">
+                          <td colspan="26" class="text-center text-danger">
                               <i class="fas fa-exclamation-triangle"></i> ${data.message || 'Failed to load APP report data'}
                           </td>
                       </tr>
@@ -709,12 +679,18 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
               // Category header row
               tbody.innerHTML += `
                   <tr class="table-info">
-                      <td colspan="24" class="text-left font-weight-bold">
+                      <td colspan="26" class="text-left font-weight-bold">
                           <i class="fas fa-folder-open mr-2"></i>${item.name}
                       </td>
                   </tr>
               `;
           } else {
+              // Calculate quarter quantities
+              const q1_qty = (parseInt(item.jan_qty) || 0) + (parseInt(item.feb_qty) || 0) + (parseInt(item.mar_qty) || 0);
+              const q2_qty = (parseInt(item.apr_qty) || 0) + (parseInt(item.may_qty) || 0) + (parseInt(item.jun_qty) || 0);
+              const q3_qty = (parseInt(item.jul_qty) || 0) + (parseInt(item.aug_qty) || 0) + (parseInt(item.sep_qty) || 0);
+              const q4_qty = (parseInt(item.oct_qty) || 0) + (parseInt(item.nov_qty) || 0) + (parseInt(item.dec_qty) || 0);
+
               // Item data row - Q1: Jan-Mar, Q2: Apr-Jun, Q3: Jul-Sep, Q4: Oct-Dec
               tbody.innerHTML += `
                   <tr>
@@ -724,18 +700,22 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
                       <td>${item.jan_qty}</td>
                       <td>${item.feb_qty}</td>
                       <td>${item.mar_qty}</td>
+                      <td class="font-weight-bold text-success">${q1_qty}</td>
                       <td class="font-weight-bold text-primary">${item.q1_amount}</td>
                       <td>${item.apr_qty}</td>
                       <td>${item.may_qty}</td>
                       <td>${item.jun_qty}</td>
+                      <td class="font-weight-bold text-success">${q2_qty}</td>
                       <td class="font-weight-bold text-primary">${item.q2_amount}</td>
                       <td>${item.jul_qty}</td>
                       <td>${item.aug_qty}</td>
                       <td>${item.sep_qty}</td>
+                      <td class="font-weight-bold text-success">${q3_qty}</td>
                       <td class="font-weight-bold text-primary">${item.q3_amount}</td>
                       <td>${item.oct_qty}</td>
                       <td>${item.nov_qty}</td>
                       <td>${item.dec_qty}</td>
+                      <td class="font-weight-bold text-success">${q4_qty}</td>
                       <td class="font-weight-bold text-primary">${item.q4_amount}</td>
                       <td>${item.total_quantity}</td>
                       <td>${item.unit_cost}</td>
@@ -989,16 +969,16 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
       }
   }
 
-  // Export Category Report to CSV
+  // Export Category Report to XLSX
   function exportCategoryReport() {
       const selectedCategory = document.getElementById('categoryFilter').value;
       if (!selectedCategory) {
           alert('Please select a category first.');
           return;
       }
-      if (confirm('Export CSV report for category: ' + selectedCategory + '?')) {
+      if (confirm('Export Excel (XLSX) report for category: ' + selectedCategory + '?')) {
           const token = getAccessToken();
-          window.location.href = 'generate_category_report.php?export=csv&category=' + encodeURIComponent(selectedCategory) + '&token=' + encodeURIComponent(token);
+          window.location.href = 'generate_category_report.php?export=xlsx&category=' + encodeURIComponent(selectedCategory) + '&token=' + encodeURIComponent(token);
       }
   }
 
@@ -1120,18 +1100,50 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
   }
 
   // Export consolidated items
-  function exportConsolidated() {
-      if (confirm('Export consolidated items to CSV?')) {
+  function exportConsolidatedItems() {
+      if (confirm('Export consolidated items to Excel (XLSX)?')) {
           const token = getAccessToken();
-          window.location.href = 'generate_consolidated_report.php?export=csv&token=' + encodeURIComponent(token);
+          window.location.href = 'generate_consolidated_report.php?export=xlsx&token=' + encodeURIComponent(token);
+      }
+  }
+
+  // Export APP Report
+  function exportAPPReport() {
+      if (confirm('Export APP report to Excel (XLSX)?')) {
+          const token = getAccessToken();
+          window.location.href = 'generate_app_report.php?export=xlsx&token=' + encodeURIComponent(token);
+      }
+  }
+
+  // Export All Categories Report
+  function exportAllCategoriesReport() {
+      if (confirm('Export all categories report to Excel (XLSX)?')) {
+          const token = getAccessToken();
+          window.location.href = 'generate_category_report.php?export=xlsx&all=1&token=' + encodeURIComponent(token);
+      }
+  }
+
+  // Export Summary Report
+  function exportSummaryReport() {
+      if (confirm('Export summary report to Excel (XLSX)?')) {
+          const token = getAccessToken();
+          window.location.href = 'generate_excel_report.php?summary=1&token=' + encodeURIComponent(token);
       }
   }
 
   // Export department report
   function exportDepartmentReport() {
-      if (confirm('Export department report to CSV?')) {
+      if (confirm('Export department report to Excel (XLSX)?')) {
           const token = getAccessToken();
-          window.location.href = 'generate_department_report.php?export=csv&token=' + encodeURIComponent(token);
+          window.location.href = 'generate_department_report.php?export=xlsx&token=' + encodeURIComponent(token);
+      }
+  }
+
+  // Export All Reports to Excel
+  function exportAllReports() {
+      if (confirm('Export all PPMP reports to Excel (XLSX)? This will include Consolidated Items, APP Report, Department Report, Category Report, and Summary.')) {
+          const token = getAccessToken();
+          window.location.href = 'generate_excel_report.php?token=' + encodeURIComponent(token);
       }
   }
 

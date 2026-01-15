@@ -1,4 +1,4 @@
-<?php
+111<?php
 // Set proper headers for PDF output
 header('Content-Type: application/pdf');
 header('Cache-Control: private, max-age=0, must-revalidate');
@@ -24,6 +24,12 @@ $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
 require_once __DIR__ . "/../apiPPMP/token_helper.php";
 TokenHelper::init($conn);
+
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
 
 // Check if FPDF library exists
 $fpdf_path = __DIR__ . "/fpdf186/fpdf.php";
@@ -358,6 +364,179 @@ class APPCSEPDF extends FPDF {
         $this->Cell(55, 5, 'Date: _______________', 0, 0, 'C');
         $this->Cell(55, 5, 'Date: _______________', 0, 1, 'R');
     }
+}
+
+if (isset($_GET['export']) && $_GET['export'] == 'xlsx') {
+    // Generate Excel
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment;filename="APP_Report_' . date('Y-m-d_H-i-s') . '.xlsx"');
+    header('Cache-Control: max-age=0');
+
+    $spreadsheet = new Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle('APP Report');
+
+    // Add header information
+    $sheet->setCellValue('A1', 'Republic of the Philippines');
+    $sheet->setCellValue('A2', 'Province of Bukidnon');
+    $sheet->setCellValue('A3', 'City of Malaybalay');
+    $sheet->setCellValue('A5', 'ANNUAL PROCUREMENT PLAN (APP) REPORT');
+    $sheet->setCellValue('A6', 'Generated on: ' . date('F j, Y g:i A'));
+
+    // Style headers
+    $sheet->getStyle('A1:A6')->applyFromArray([
+        'font' => ['bold' => true, 'size' => 12],
+        'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
+    ]);
+    $sheet->mergeCells('A1:Z1');
+    $sheet->mergeCells('A2:Z2');
+    $sheet->mergeCells('A3:Z3');
+    $sheet->mergeCells('A5:Z5');
+    $sheet->mergeCells('A6:Z6');
+
+    // Table headers
+    $row = 8;
+    $sheet->setCellValue('A' . $row, 'Item Code');
+    $sheet->setCellValue('B' . $row, 'Item Name & Specifications');
+    $sheet->setCellValue('C' . $row, 'Unit');
+    $sheet->setCellValue('D' . $row, 'Jan');
+    $sheet->setCellValue('E' . $row, 'Feb');
+    $sheet->setCellValue('F' . $row, 'Mar');
+    $sheet->setCellValue('G' . $row, 'Q1');
+    $sheet->setCellValue('H' . $row, 'Q1 Amount');
+    $sheet->setCellValue('I' . $row, 'Apr');
+    $sheet->setCellValue('J' . $row, 'May');
+    $sheet->setCellValue('K' . $row, 'Jun');
+    $sheet->setCellValue('L' . $row, 'Q2');
+    $sheet->setCellValue('M' . $row, 'Q2 Amount');
+    $sheet->setCellValue('N' . $row, 'Jul');
+    $sheet->setCellValue('O' . $row, 'Aug');
+    $sheet->setCellValue('P' . $row, 'Sep');
+    $sheet->setCellValue('Q' . $row, 'Q3');
+    $sheet->setCellValue('R' . $row, 'Q3 Amount');
+    $sheet->setCellValue('S' . $row, 'Oct');
+    $sheet->setCellValue('T' . $row, 'Nov');
+    $sheet->setCellValue('U' . $row, 'Dec');
+    $sheet->setCellValue('V' . $row, 'Q4');
+    $sheet->setCellValue('W' . $row, 'Q4 Amount');
+    $sheet->setCellValue('X' . $row, 'Total Qty');
+    $sheet->setCellValue('Y' . $row, 'Unit Cost');
+    $sheet->setCellValue('Z' . $row, 'Total Cost');
+
+    // Style header
+    $sheet->getStyle('A' . $row . ':Z' . $row)->applyFromArray([
+        'font' => ['bold' => true, 'size' => 12],
+        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '4A5568']],
+        'font' => ['color' => ['rgb' => 'FFFFFF'], 'bold' => true],
+        'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+        'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]
+    ]);
+
+    // Get data
+    $stmt = $conn->prepare("
+        SELECT
+            i.Item_Code,
+            i.Item_Name,
+            i.Item_Description,
+            i.Unit,
+            i.Unit_Cost,
+            c.Category,
+            SUM(e.Jan_Qty) as jan_qty,
+            SUM(e.Feb_Qty) as feb_qty,
+            SUM(e.Mar_Qty) as mar_qty,
+            SUM(e.Apr_Qty) as apr_qty,
+            SUM(e.May_Qty) as may_qty,
+            SUM(e.Jun_Qty) as jun_qty,
+            SUM(e.Jul_Qty) as jul_qty,
+            SUM(e.Aug_Qty) as aug_qty,
+            SUM(e.Sep_Qty) as sep_qty,
+            SUM(e.Oct_Qty) as oct_qty,
+            SUM(e.Nov_Qty) as nov_qty,
+            SUM(e.Dec_Qty) as dec_qty,
+            SUM(e.Total_Qty) as total_quantity,
+            SUM(e.Total_Cost) as total_cost
+        FROM tbl_ppmp_entries e
+        INNER JOIN tbl_ppmp_documents p ON e.PPMP_ID = p.ID
+        INNER JOIN tbl_ppmp_bac_items i ON e.Item_ID = i.ID
+        INNER JOIN tbl_ppmp_categories c ON i.Category = c.Category_Name
+        WHERE p.Status = 'approved' AND p.Plan_Year = ?
+        GROUP BY i.Item_Code, i.Item_Name, i.Item_Description, i.Unit, i.Unit_Cost, c.Category
+        ORDER BY c.Category, i.Item_Code
+    ");
+    $stmt->execute([$currentYear]);
+    $appData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Add data rows
+    $row++;
+    $currentCategory = '';
+    foreach($appData as $item) {
+        // Add category header if category changes
+        if ($item['Category'] !== $currentCategory) {
+            $currentCategory = $item['Category'];
+            $sheet->setCellValue('A' . $row, $currentCategory);
+            $sheet->mergeCells('A' . $row . ':Z' . $row);
+            $sheet->getStyle('A' . $row . ':Z' . $row)->applyFromArray([
+                'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'E2E8F0']],
+                'font' => ['bold' => true],
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT]
+            ]);
+            $row++;
+        }
+
+        $q1_qty = $item['jan_qty'] + $item['feb_qty'] + $item['mar_qty'];
+        $q2_qty = $item['apr_qty'] + $item['may_qty'] + $item['jun_qty'];
+        $q3_qty = $item['jul_qty'] + $item['aug_qty'] + $item['sep_qty'];
+        $q4_qty = $item['oct_qty'] + $item['nov_qty'] + $item['dec_qty'];
+        $q1_amount = $q1_qty * $item['Unit_Cost'];
+        $q2_amount = $q2_qty * $item['Unit_Cost'];
+        $q3_amount = $q3_qty * $item['Unit_Cost'];
+        $q4_amount = $q4_qty * $item['Unit_Cost'];
+
+        $sheet->setCellValue('A' . $row, $item['Item_Code'] ?: '');
+        $sheet->setCellValue('B' . $row, $item['Item_Name'] . ' - ' . $item['Item_Description']);
+        $sheet->setCellValue('C' . $row, $item['Unit'] ?: '');
+        $sheet->setCellValue('D' . $row, $item['jan_qty'] ?: 0);
+        $sheet->setCellValue('E' . $row, $item['feb_qty'] ?: 0);
+        $sheet->setCellValue('F' . $row, $item['mar_qty'] ?: 0);
+        $sheet->setCellValue('G' . $row, $q1_qty ?: 0);
+        $sheet->setCellValue('H' . $row, $q1_amount ? '₱' . number_format($q1_amount, 2) : '₱0.00');
+        $sheet->setCellValue('I' . $row, $item['apr_qty'] ?: 0);
+        $sheet->setCellValue('J' . $row, $item['may_qty'] ?: 0);
+        $sheet->setCellValue('K' . $row, $item['jun_qty'] ?: 0);
+        $sheet->setCellValue('L' . $row, $q2_qty ?: 0);
+        $sheet->setCellValue('M' . $row, $q2_amount ? '₱' . number_format($q2_amount, 2) : '₱0.00');
+        $sheet->setCellValue('N' . $row, $item['jul_qty'] ?: 0);
+        $sheet->setCellValue('O' . $row, $item['aug_qty'] ?: 0);
+        $sheet->setCellValue('P' . $row, $item['sep_qty'] ?: 0);
+        $sheet->setCellValue('Q' . $row, $q3_qty ?: 0);
+        $sheet->setCellValue('R' . $row, $q3_amount ? '₱' . number_format($q3_amount, 2) : '₱0.00');
+        $sheet->setCellValue('S' . $row, $item['oct_qty'] ?: 0);
+        $sheet->setCellValue('T' . $row, $item['nov_qty'] ?: 0);
+        $sheet->setCellValue('U' . $row, $item['dec_qty'] ?: 0);
+        $sheet->setCellValue('V' . $row, $q4_qty ?: 0);
+        $sheet->setCellValue('W' . $row, $q4_amount ? '₱' . number_format($q4_amount, 2) : '₱0.00');
+        $sheet->setCellValue('X' . $row, $item['total_quantity'] ?: 0);
+        $sheet->setCellValue('Y' . $row, $item['Unit_Cost'] ? '₱' . number_format($item['Unit_Cost'], 2) : '');
+        $sheet->setCellValue('Z' . $row, $item['total_cost'] ? '₱' . number_format($item['total_cost'], 2) : '');
+
+        $row++;
+    }
+
+    // Style data rows
+    $dataRange = 'A9:Z' . ($row - 1);
+    $sheet->getStyle($dataRange)->applyFromArray([
+        'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
+        'alignment' => ['vertical' => Alignment::VERTICAL_TOP]
+    ]);
+
+    // Auto-size columns
+    foreach(range('A', 'Z') as $columnID) {
+        $sheet->getColumnDimension($columnID)->setAutoSize(true);
+    }
+
+    $writer = new Xlsx($spreadsheet);
+    $writer->save('php://output');
+    exit();
 }
 
 // Temporarily disable authentication for testing

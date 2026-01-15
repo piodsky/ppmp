@@ -238,6 +238,12 @@ if ($role === 'admin' || $role === 'staff') {
             min-width: 70px;
         }
 
+        /* Category column */
+        .table th:nth-child(23), .table td:nth-child(23) {
+            width: 100px;
+            min-width: 80px;
+        }
+
         /* Actions column */
         .table th:last-child, .table td:last-child {
             width: 80px;
@@ -995,9 +1001,13 @@ if ($role === 'admin' || $role === 'staff') {
         <div class="d-flex justify-content-between align-items-center mb-2">
             <div class="d-flex gap-2">
                 <button class="btn btn-success" onclick="addRow()">➕ Add Row</button>
+                <button class="btn btn-info" onclick="document.getElementById('excelFileInput').click()" title="Import from Excel">
+                    <i class="fas fa-upload"></i> Import
+                </button>
                 <button class="btn btn-primary" onclick="openItemSelectionModal()" title="Press F3 to open item selection" id="f3Btn">
                     <i class="fas fa-list"></i> Select Items (F3)
                 </button>
+                <input type="file" id="excelFileInput" accept=".xlsx,.xls" style="display: none;" onchange="importFromExcel()">
             </div>
             <small class="text-muted">Scroll horizontally if needed</small>
         </div>
@@ -1015,6 +1025,7 @@ if ($role === 'admin' || $role === 'staff') {
                     <th>Unit Cost</th>
                     <th>Total Qty</th>
                     <th>Total Cost</th>
+                    <th>Category</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -1133,13 +1144,9 @@ function getAccessToken() {
 // Authenticated fetch function (no token refresh needed since tokens don't expire)
 function authenticatedFetch(url, options = {}) {
   const token = localStorage.getItem('access_token');
-  if (!token) {
-    return Promise.reject(new Error('Authentication required'));
-  }
 
   const defaultOptions = {
     headers: {
-      'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
       ...options.headers
     },
@@ -1374,6 +1381,219 @@ function loadPPMPDataForEdit(ppmpId) {
     .catch(error => {
         console.error('Load error:', error);
         alert('Error loading PPMP for editing');
+    });
+}
+
+// Import from Excel function
+function importFromExcel() {
+    const fileInput = document.getElementById('excelFileInput');
+    const file = fileInput.files[0];
+
+    if (!file) {
+        alert('Please select an Excel file');
+        return;
+    }
+
+    // Show loading
+    const importBtn = document.querySelector('button[title*="Import from Excel"]');
+    if (!importBtn) {
+        alert('Import button not found');
+        return;
+    }
+    const originalText = importBtn.innerHTML;
+    importBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing...';
+    importBtn.disabled = true;
+
+    // Import in preview mode (no PPMP ID required)
+    const performImport = (ppmpId = null) => {
+        const formData = new FormData();
+        formData.append('excel_file', file);
+        if (ppmpId) {
+            formData.append('ppmp_id', ppmpId);
+        }
+
+        // Debug: Log formData contents
+        for (let [key, value] of formData.entries()) {
+            console.log(key, value);
+        }
+
+        fetch(`${API_BASE_URL}/api_import_ppmp_items.php`, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                if (data.preview_mode) {
+                    // Preview mode - populate table with data
+                    populateTableWithPreviewData(data.preview_data);
+                    alert(data.message + (data.errors.length > 0 ? '\n\nErrors:\n' + data.errors.join('\n') : ''));
+                } else {
+                    // Normal import mode
+                    alert(data.message + (data.errors.length > 0 ? '\n\nErrors:\n' + data.errors.join('\n') : ''));
+                    // Reload the PPMP items
+                    reloadPPMPItems();
+                }
+            } else {
+                alert('Import failed: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Import error:', error);
+            alert('Error importing Excel file: ' + error.message);
+        })
+        .finally(() => {
+            // Reset button
+            if (importBtn) {
+                importBtn.innerHTML = originalText;
+                importBtn.disabled = false;
+            }
+            // Clear file input
+            fileInput.value = '';
+        });
+    };
+
+    // Always import in preview mode first
+    performImport(currentPPMPId);
+}
+
+// Function to populate table with preview data
+function populateTableWithPreviewData(previewData) {
+    const tableBody = document.getElementById('itemsTableBody');
+    tableBody.innerHTML = ''; // Clear existing rows
+
+    previewData.forEach((item, index) => {
+        // Use the actual item_id from the import, or fallback to preview ID
+        const actualItemId = item.item_id || ('preview_' + index);
+
+        // Create a temporary item object for addRowForItem
+        const tempItem = {
+            ID: actualItemId,
+            Item_Code: item.item_code || 'PREVIEW',
+            Item_Name: '',
+            Items_Description: item.description,
+            Unit: item.unit,
+            Unit_Cost: item.unit_cost,
+            Category: item.category
+        };
+
+        // Add row for this item
+        addRowForItem(tempItem);
+
+        // Get the newly added row and set the quantities and category
+        const rows = tableBody.querySelectorAll('tr');
+        const lastRow = rows[rows.length - 1];
+        lastRow.querySelector('.item-category').value = item.category;
+
+        // Set quantities
+        lastRow.querySelector('.jan').value = item.jan_qty;
+        lastRow.querySelector('.feb').value = item.feb_qty;
+        lastRow.querySelector('.mar').value = item.mar_qty;
+        lastRow.querySelector('.apr').value = item.apr_qty;
+        lastRow.querySelector('.may').value = item.may_qty;
+        lastRow.querySelector('.jun').value = item.jun_qty;
+        lastRow.querySelector('.jul').value = item.jul_qty;
+        lastRow.querySelector('.aug').value = item.aug_qty;
+        lastRow.querySelector('.sep').value = item.sep_qty;
+        lastRow.querySelector('.oct').value = item.oct_qty;
+        lastRow.querySelector('.nov').value = item.nov_qty;
+        lastRow.querySelector('.dec').value = item.dec_qty;
+
+        // Recalculate totals
+        recalculateRow(lastRow.querySelector('.jan'));
+    });
+
+    updateItemCount();
+    updatePagination();
+    showPage(1);
+}
+
+// Function to reload PPMP items after import
+function reloadPPMPItems() {
+    if (!currentPPMPId) return;
+
+    authenticatedFetch(`${API_BASE_URL}/api_load_ppmp.php?id=${currentPPMPId}`)
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Clear selected items set
+            selectedItems.clear();
+
+            // Clear existing table
+            const tableBody = document.getElementById('itemsTableBody');
+            tableBody.innerHTML = '';
+
+            // Populate entries
+            data.ppmp.entries.forEach(entry => {
+                addRow();
+
+                // Get the last added row
+                const rows = tableBody.querySelectorAll('tr');
+                const lastRow = rows[rows.length - 1];
+
+                // Set item selection
+                const dropdown = lastRow.querySelector('.searchable-dropdown');
+                const selectedText = dropdown.querySelector('.selected-text');
+                const itemId = entry.Item_ID || entry.item_id;
+
+                // Find the corresponding item in itemsList
+                const item = itemsList.find(item => parseInt(item.ID) === parseInt(itemId));
+                if (item) {
+                    selectedText.textContent = item.Item_Code ? '[' + item.Item_Code + '] ' + item.Items_Description : item.Items_Description;
+
+                    // Add to selected items set to prevent duplicates
+                    if (itemId) {
+                        selectedItems.add(parseInt(itemId));
+                        dropdown.setAttribute('data-selected-item', itemId);
+                        dropdown.setAttribute('data-code', item.Item_Code || '');
+                        dropdown.setAttribute('data-name', item.Item_Name || '');
+                        dropdown.setAttribute('data-category', item.Category || '');
+                    }
+
+                    // Set the description, unit, and cost fields
+                    lastRow.querySelector('.item-description').value = item.Items_Description || '';
+                    lastRow.querySelector('.item-unit').value = item.Unit || '';
+                    lastRow.querySelector('.unit_cost').value = item.Unit_Cost || 0;
+                }
+
+                // Set quantities
+                lastRow.querySelector('.jan').value = Math.max(0, entry.Jan_Qty || entry.jan_qty || 0);
+                lastRow.querySelector('.feb').value = Math.max(0, entry.Feb_Qty || entry.feb_qty || 0);
+                lastRow.querySelector('.mar').value = Math.max(0, entry.Mar_Qty || entry.mar_qty || 0);
+                lastRow.querySelector('.apr').value = Math.max(0, entry.Apr_Qty || entry.apr_qty || 0);
+                lastRow.querySelector('.may').value = Math.max(0, entry.May_Qty || entry.may_qty || 0);
+                lastRow.querySelector('.jun').value = Math.max(0, entry.Jun_Qty || entry.jun_qty || 0);
+                lastRow.querySelector('.jul').value = Math.max(0, entry.Jul_Qty || entry.jul_qty || 0);
+                lastRow.querySelector('.aug').value = Math.max(0, entry.Aug_Qty || entry.aug_qty || 0);
+                lastRow.querySelector('.sep').value = Math.max(0, entry.Sep_Qty || entry.sep_qty || 0);
+                lastRow.querySelector('.oct').value = Math.max(0, entry.Oct_Qty || entry.oct_qty || 0);
+                lastRow.querySelector('.nov').value = Math.max(0, entry.Nov_Qty || entry.nov_qty || 0);
+                lastRow.querySelector('.dec').value = Math.max(0, entry.Dec_Qty || entry.dec_qty || 0);
+
+                // Recalculate totals
+                recalculateRow(lastRow.querySelector('.jan'));
+
+                // Adjust row height after loading
+                setTimeout(() => {
+                  adjustRowHeight(lastRow);
+                }, 50);
+            });
+
+            updateItemCount();
+            updatePagination();
+            showPage(1);
+        } else {
+            alert('Error reloading PPMP items: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Reload error:', error);
+        alert('Error reloading PPMP items');
     });
 }
 

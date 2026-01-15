@@ -1,14 +1,33 @@
 <?php
-// Set proper headers for PDF output
-header('Content-Type: application/pdf');
-header('Cache-Control: private, max-age=0, must-revalidate');
-header('Pragma: public');
+require_once __DIR__ . '/../vendor/autoload.php';
+use Dotenv\Dotenv;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+
+// Check export type
+$exportType = isset($_GET['export']) ? $_GET['export'] : 'pdf';
+
+// Set headers based on export type
+if ($exportType === 'xlsx') {
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment;filename="Category_Report_' . (isset($_GET['category']) ? preg_replace('/[^A-Za-z0-9\-_]/', '_', $_GET['category']) : 'All') . '_' . date('Y-m-d_H-i-s') . '.xlsx"');
+    header('Cache-Control: max-age=0');
+} elseif ($exportType === 'csv') {
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment;filename="Category_Report_' . (isset($_GET['category']) ? preg_replace('/[^A-Za-z0-9\-_]/', '_', $_GET['category']) : 'All') . '_' . date('Y-m-d_H-i-s') . '.csv"');
+    header('Cache-Control: max-age=0');
+} else {
+    // Default to PDF
+    header('Content-Type: application/pdf');
+    header('Cache-Control: private, max-age=0, must-revalidate');
+    header('Pragma: public');
+}
 
 // Prevent any HTML output
 ob_start();
-
-require_once __DIR__ . '/../vendor/autoload.php';
-use Dotenv\Dotenv;
 
 // Load .env variables
 $dotenv = Dotenv::createImmutable(__DIR__ . '/../apiPPMP');
@@ -482,55 +501,12 @@ try {
         $groupedItems[$key]['total_cost'] += $item['total_cost'];
     }
 
-    if ($export === 'csv') {
-        // Output CSV
-        header('Content-Type: text/csv');
-        header('Content-Disposition: attachment; filename="' . $safeCategory . '_Report_' . date('Y-m-d_H-i-s') . '.csv"');
-
-        $output = fopen('php://output', 'w');
-
-        // CSV Header
-        $header = ['Item Code', 'Item Name & Specifications', 'Unit'];
-        foreach($departments as $dept) {
-            $header[] = $dept;
-        }
-        $header = array_merge($header, ['Total Qty', 'Unit Cost', 'Total Cost']);
-        fputcsv($output, $header);
-
-        // CSV Data
-        foreach($groupedItems as $item) {
-            $row = [
-                $item['Item_Code'] ?: '',
-                $item['Item_Name'] . ' - ' . $item['Item_Description'],
-                $item['Unit'] ?: ''
-            ];
-
-            // Add department quantities
-            foreach($departments as $dept) {
-                $qty = isset($item['departments'][$dept]) ? $item['departments'][$dept] : '';
-                $row[] = $qty === '' ? '' : number_format($qty);
-            }
-
-            // Add totals
-            $row[] = number_format($item['total_quantity']);
-            $row[] = number_format($item['Unit_Cost'], 2);
-            $row[] = number_format($item['total_cost'], 2);
-
-            fputcsv($output, $row);
-        }
-
-        // Summary
-        fputcsv($output, []); // Empty row
-        fputcsv($output, ['SUMMARY']);
-        $totalItems = count($groupedItems);
-        $grandTotalCost = array_sum(array_column($groupedItems, 'total_cost'));
-        fputcsv($output, ['Total Items in Category:', number_format($totalItems)]);
-        fputcsv($output, ['Grand Total Cost:', 'P' . number_format($grandTotalCost, 2)]);
-        fputcsv($output, ['Approved PPMP Documents:', number_format($approvedCount)]);
-        fputcsv($output, ['Category:', $category]);
-
-        fclose($output);
-        exit();
+    if ($exportType === 'xlsx') {
+        // Generate XLSX file
+        generateCategoryXLSX($groupedItems, $departments, $currentYear, $approvedCount, $category);
+    } elseif ($exportType === 'csv') {
+        // Generate CSV file
+        generateCategoryCSV($groupedItems, $departments, $currentYear, $approvedCount, $category);
     } else {
         // Table header
         $pdf->TableHeader($departments);
@@ -609,15 +585,210 @@ try {
     $pdf->Cell(0, 10, 'Please contact your system administrator.', 0, 1, 'L');
 }
 
-// Output PDF based on mode
-$safeCategory = preg_replace('/[^A-Za-z0-9\-_]/', '_', $category);
-$filename = 'Category_Report_' . $safeCategory . '_' . date('Y-m-d_H-i-s') . '.pdf';
-
-if ($preview) {
-    // Preview mode - display in browser
-    $pdf->Output($filename, 'I');
+// Output based on export type
+if ($exportType === 'xlsx') {
+    // Generate XLSX file
+    generateCategoryXLSX($groupedItems, $departments, $currentYear, $approvedCount, $category);
+} elseif ($exportType === 'csv') {
+    // Generate CSV file
+    generateCategoryCSV($groupedItems, $departments, $currentYear, $approvedCount, $category);
 } else {
-    // Download mode - force download
-    $pdf->Output($filename, 'D');
+    // Default PDF output
+    $safeCategory = preg_replace('/[^A-Za-z0-9\-_]/', '_', $category);
+    $filename = 'Category_Report_' . $safeCategory . '_' . date('Y-m-d_H-i-s') . '.pdf';
+
+    if ($preview) {
+        // Preview mode - display in browser
+        $pdf->Output($filename, 'I');
+    } else {
+        // Download mode - force download
+        $pdf->Output($filename, 'D');
+    }
+}
+
+// Function to generate XLSX export for category report
+function generateCategoryXLSX($groupedItems, $departments, $currentYear, $approvedCount, $category) {
+    $spreadsheet = new Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+
+    // Set document properties
+    $spreadsheet->getProperties()
+        ->setCreator('PPMP Management System')
+        ->setTitle('Category Consolidated Report')
+        ->setSubject('Consolidated Procurement Items by Category and Department')
+        ->setDescription('Generated category consolidated report for approved PPMP documents');
+
+    // Add header information
+    $sheet->setCellValue('A1', 'Republic of the Philippines');
+    $sheet->setCellValue('A2', 'Province of Bukidnon');
+    $sheet->setCellValue('A3', 'City of Malaybalay');
+    $sheet->setCellValue('A5', 'CONSOLIDATED PPMP ITEMS BY CATEGORY');
+    $sheet->setCellValue('A6', $category . ' - ' . $currentYear . ' REPORT');
+
+    // Style headers
+    $headerStyle = [
+        'font' => ['bold' => true, 'size' => 12],
+        'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+    ];
+    $sheet->getStyle('A1:A6')->applyFromArray($headerStyle);
+
+    // Merge cells for headers
+    $sheet->mergeCells('A1:' . chr(65 + count($departments) + 4) . '1');
+    $sheet->mergeCells('A2:' . chr(65 + count($departments) + 4) . '2');
+    $sheet->mergeCells('A3:' . chr(65 + count($departments) + 4) . '3');
+    $sheet->mergeCells('A5:' . chr(65 + count($departments) + 4) . '5');
+    $sheet->mergeCells('A6:' . chr(65 + count($departments) + 4) . '6');
+
+    // Table headers
+    $row = 8;
+    $col = 'A';
+
+    $sheet->setCellValue($col++ . $row, 'Item Code');
+    $sheet->setCellValue($col++ . $row, 'Item & Specifications');
+    $sheet->setCellValue($col++ . $row, 'Unit');
+
+    // Department columns
+    foreach($departments as $dept) {
+        $sheet->setCellValue($col++ . $row, substr($dept, 0, 15));
+    }
+
+    $sheet->setCellValue($col++ . $row, 'Total Qty');
+    $sheet->setCellValue($col++ . $row, 'Unit Cost');
+    $sheet->setCellValue($col++ . $row, 'Total Cost');
+
+    // Style table header
+    $headerRange = 'A' . $row . ':' . chr(65 + count($departments) + 5) . $row;
+    $sheet->getStyle($headerRange)->applyFromArray([
+        'font' => ['bold' => true],
+        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'CCCCCC']],
+        'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+        'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]
+    ]);
+
+    // Add data rows
+    $row++;
+    foreach($groupedItems as $item) {
+        $col = 'A';
+        $sheet->setCellValue($col++ . $row, $item['Item_Code'] ?: '');
+        $sheet->setCellValue($col++ . $row, $item['Item_Name'] . ' - ' . $item['Item_Description']);
+        $sheet->setCellValue($col++ . $row, $item['Unit'] ?: '');
+
+        // Department quantities
+        foreach($departments as $dept) {
+            $qty = isset($item['departments'][$dept]) ? $item['departments'][$dept] : '';
+            $sheet->setCellValue($col++ . $row, $qty === '' ? '' : $qty);
+        }
+
+        // Totals
+        $sheet->setCellValue($col++ . $row, $item['total_quantity']);
+        $sheet->setCellValue($col++ . $row, $item['Unit_Cost']);
+        $sheet->setCellValue($col++ . $row, $item['total_cost']);
+
+        $row++;
+    }
+
+    // Add summary section
+    $row += 2;
+    $summaryStartRow = $row;
+    $sheet->setCellValue('A' . $row, 'SUMMARY');
+    $sheet->getStyle('A' . $row)->applyFromArray(['font' => ['bold' => true]]);
+
+    $row++;
+    $totalItems = count($groupedItems);
+    $grandTotalCost = array_sum(array_column($groupedItems, 'total_cost'));
+
+    $sheet->setCellValue('A' . $row, 'Total Items in Category:');
+    $sheet->setCellValue('B' . $row, $totalItems);
+    $row++;
+
+    $sheet->setCellValue('A' . $row, 'Grand Total Cost:');
+    $sheet->setCellValue('B' . $row, 'P' . number_format($grandTotalCost, 2));
+    $row++;
+
+    $sheet->setCellValue('A' . $row, 'Approved PPMP Documents:');
+    $sheet->setCellValue('B' . $row, $approvedCount);
+    $row++;
+
+    $sheet->setCellValue('A' . $row, 'Category:');
+    $sheet->setCellValue('B' . $row, $category);
+
+    // Style summary
+    $summaryRange = 'A' . $summaryStartRow . ':B' . $row;
+    $sheet->getStyle($summaryRange)->applyFromArray([
+        'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]
+    ]);
+
+    // Auto-size columns
+    foreach(range('A', chr(65 + count($departments) + 5)) as $columnID) {
+        $sheet->getColumnDimension($columnID)->setAutoSize(true);
+    }
+
+    // Set data rows border
+    $dataRange = 'A9:' . chr(65 + count($departments) + 5) . ($row - 5);
+    $sheet->getStyle($dataRange)->applyFromArray([
+        'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]
+    ]);
+
+    // Create writer and output
+    $writer = new Xlsx($spreadsheet);
+    $writer->save('php://output');
+}
+
+// Function to generate CSV export for category report
+function generateCategoryCSV($groupedItems, $departments, $currentYear, $approvedCount, $category) {
+    // Create CSV header
+    $output = fopen('php://output', 'w');
+
+    // Add header information
+    fputcsv($output, ['Republic of the Philippines']);
+    fputcsv($output, ['Province of Bukidnon']);
+    fputcsv($output, ['City of Malaybalay']);
+    fputcsv($output, []);
+    fputcsv($output, ['CONSOLIDATED PPMP ITEMS BY CATEGORY']);
+    fputcsv($output, [$category . ' - ' . $currentYear . ' REPORT']);
+    fputcsv($output, []);
+
+    // Create table headers
+    $headers = ['Item Code', 'Item & Specifications', 'Unit'];
+    foreach($departments as $dept) {
+        $headers[] = substr($dept, 0, 15);
+    }
+    $headers[] = 'Total Qty';
+    $headers[] = 'Unit Cost';
+    $headers[] = 'Total Cost';
+
+    fputcsv($output, $headers);
+
+    // Add data rows
+    foreach($groupedItems as $item) {
+        $row = [
+            $item['Item_Code'] ?: '',
+            $item['Item_Name'] . ' - ' . $item['Item_Description'],
+            $item['Unit'] ?: ''
+        ];
+
+        // Department quantities
+        foreach($departments as $dept) {
+            $qty = isset($item['departments'][$dept]) ? $item['departments'][$dept] : '';
+            $row[] = $qty === '' ? '' : $qty;
+        }
+
+        // Totals
+        $row[] = $item['total_quantity'];
+        $row[] = $item['Unit_Cost'];
+        $row[] = $item['total_cost'];
+
+        fputcsv($output, $row);
+    }
+
+    // Add summary
+    fputcsv($output, []);
+    fputcsv($output, ['SUMMARY']);
+    fputcsv($output, ['Total Items in Category:', count($groupedItems)]);
+    fputcsv($output, ['Grand Total Cost:', 'P' . number_format(array_sum(array_column($groupedItems, 'total_cost')), 2)]);
+    fputcsv($output, ['Approved PPMP Documents:', $approvedCount]);
+    fputcsv($output, ['Category:', $category]);
+
+    fclose($output);
 }
 ?>

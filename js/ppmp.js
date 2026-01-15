@@ -100,8 +100,8 @@ function initializePPMP() {
 }
 
 function loadItems() {
-    // Fetch only 100 items initially to prevent lag
-    return authenticatedFetch(`${API_BASE_URL}/get_items.php?limit=100`)
+    // Fetch all items initially to ensure imported items are available
+    return authenticatedFetch(`${API_BASE_URL}/get_items.php`)
       .then(response => {
         // Check if response is OK
         if (!response.ok) {
@@ -118,7 +118,7 @@ function loadItems() {
         try {
           const data = JSON.parse(text);
           itemsList = data.items || [];
-          console.log('DEBUG: Loaded', itemsList.length, 'items from API (limited to 100)');
+          console.log('DEBUG: Loaded', itemsList.length, 'items from API (all items)');
           // Adjust heights for all existing rows after items are loaded
           setTimeout(() => {
             adjustAllRowHeights();
@@ -215,7 +215,7 @@ function addRow() {
                 <div class="dropdown-menu">
                     <input type="text" class="search-input" placeholder="Search items...">
                     <div class="dropdown-items">
-                        ${displayItems.map(item => `<div class="dropdown-item" data-value="${item.ID}" data-description="${item.Items_Description}" data-unit="${item.Unit}" data-cost="${item.Unit_Cost}" data-code="${item.Item_Code}" data-name="${item.Item_Name}" data-category="${item.Category}">${item.Item_Code ? '[' + item.Item_Code + '] ' : ''}${item.Items_Description}</div>`).join('')}
+                        ${displayItems.map(item => `<div class="dropdown-item" data-value="${item.ID}" data-description="${item.Items_Description}" data-unit="${item.Unit}" data-cost="${item.Unit_Cost}" data-code="${item.Item_Code}" data-name="${item.Item_Name}" data-category="${item.Category}">${item.Items_Description}</div>`).join('')}
                     </div>
                 </div>
             </div>
@@ -241,6 +241,7 @@ function addRow() {
        <td><input type="number" class="form-control unit_cost"></td>
        <td><input type="text" class="form-control total_qty" readonly></td>
        <td><input type="text" class="form-control total_cost" readonly></td>
+       <td><input type="text" class="form-control item-category" readonly></td>
        <td><button class="btn btn-danger btn-sm" onclick="deleteRow(this)">Delete</button></td>
     `;
 
@@ -263,7 +264,7 @@ function addRowForItem(item) {
         <td>
             <div class="searchable-dropdown" data-selected-item="${item.ID}" data-code="${item.Item_Code || ''}" data-name="${item.Item_Name || ''}" data-category="${item.Category || ''}">
                 <div class="dropdown-display" tabindex="0">
-                    <span class="selected-text">${item.Item_Code ? '[' + item.Item_Code + '] ' : ''}${item.Items_Description}</span>
+                    <span class="selected-text">${item.Items_Description}</span>
                 </div>
                 <div class="dropdown-menu">
                     <input type="text" class="search-input" placeholder="Search items...">
@@ -273,29 +274,34 @@ function addRowForItem(item) {
                 </div>
             </div>
         </td>
-       <td><textarea class="form-control item-description" rows="1" style="resize: none; overflow: hidden;">${item.Items_Description || ''}</textarea></td>
-       <td><input type="text" class="form-control item-unit" value="${item.Unit || ''}"></td>
-       <td><input type="number" class="form-control jan" value="0" min="0" oninput="recalculateRow(this)"></td>
-       <td><input type="number" class="form-control feb" value="0" min="0" oninput="recalculateRow(this)"></td>
-       <td><input type="number" class="form-control mar" value="0" min="0" oninput="recalculateRow(this)"></td>
-       <td><input type="text" class="form-control q1total" value="0" readonly></td>
-       <td><input type="number" class="form-control apr" value="0" min="0" oninput="recalculateRow(this)"></td>
-       <td><input type="number" class="form-control may" value="0" min="0" oninput="recalculateRow(this)"></td>
-       <td><input type="number" class="form-control jun" value="0" min="0" oninput="recalculateRow(this)"></td>
-       <td><input type="text" class="form-control q2total" value="0" readonly></td>
-       <td><input type="number" class="form-control jul" value="0" min="0" oninput="recalculateRow(this)"></td>
-       <td><input type="number" class="form-control aug" value="0" min="0" oninput="recalculateRow(this)"></td>
-       <td><input type="number" class="form-control sep" value="0" min="0" oninput="recalculateRow(this)"></td>
-       <td><input type="text" class="form-control q3total" value="0" readonly></td>
-       <td><input type="number" class="form-control oct" value="0" min="0" oninput="recalculateRow(this)"></td>
-       <td><input type="number" class="form-control nov" value="0" min="0" oninput="recalculateRow(this)"></td>
-       <td><input type="number" class="form-control dec" value="0" min="0" oninput="recalculateRow(this)"></td>
-       <td><input type="text" class="form-control q4total" value="0" readonly></td>
-       <td><input type="number" class="form-control unit_cost" value="${item.Unit_Cost || 0}"></td>
-       <td><input type="text" class="form-control total_qty" readonly value="0"></td>
-       <td><input type="text" class="form-control total_cost" readonly value="0.00"></td>
-       <td><button class="btn btn-danger btn-sm" onclick="deleteRow(this)">Delete</button></td>
+        <td><textarea class="form-control item-description" rows="1" style="resize: none; overflow: hidden;">${item.Items_Description || ''}</textarea></td>
+        <td><input type="text" class="form-control item-unit" value="${item.Unit || ''}"></td>
+        <td><input type="number" class="form-control jan" value="0" min="0" oninput="recalculateRow(this)"></td>
+        <td><input type="number" class="form-control feb" value="0" min="0" oninput="recalculateRow(this)"></td>
+        <td><input type="number" class="form-control mar" value="0" min="0" oninput="recalculateRow(this)"></td>
+        <td><input type="text" class="form-control q1total" value="0" readonly></td>
+        <td><input type="number" class="form-control apr" value="0" min="0" oninput="recalculateRow(this)"></td>
+        <td><input type="number" class="form-control may" value="0" min="0" oninput="recalculateRow(this)"></td>
+        <td><input type="number" class="form-control jun" value="0" min="0" oninput="recalculateRow(this)"></td>
+        <td><input type="text" class="form-control q2total" value="0" readonly></td>
+        <td><input type="number" class="form-control jul" value="0" min="0" oninput="recalculateRow(this)"></td>
+        <td><input type="number" class="form-control aug" value="0" min="0" oninput="recalculateRow(this)"></td>
+        <td><input type="number" class="form-control sep" value="0" min="0" oninput="recalculateRow(this)"></td>
+        <td><input type="text" class="form-control q3total" value="0" readonly></td>
+        <td><input type="number" class="form-control oct" value="0" min="0" oninput="recalculateRow(this)"></td>
+        <td><input type="number" class="form-control nov" value="0" min="0" oninput="recalculateRow(this)"></td>
+        <td><input type="number" class="form-control dec" value="0" min="0" oninput="recalculateRow(this)"></td>
+        <td><input type="text" class="form-control q4total" value="0" readonly></td>
+        <td><input type="number" class="form-control unit_cost" value="${item.Unit_Cost || 0}"></td>
+        <td><input type="text" class="form-control total_qty" readonly value="0"></td>
+        <td><input type="text" class="form-control total_cost" readonly value="0.00"></td>
+        <td><input type="text" class="form-control item-category" readonly></td>
+        <td><button class="btn btn-danger btn-sm" onclick="deleteRow(this)">Delete</button></td>
     `;
+
+    // Set the selected text to show item code if available
+    const selectedText = row.querySelector('.selected-text');
+    selectedText.textContent = item.Item_Code ? '[' + item.Item_Code + '] ' + item.Items_Description : item.Items_Description;
 
   // Initialize searchable dropdown
   initializeSearchableDropdown(row);
@@ -423,6 +429,7 @@ function changePage(direction) {
 
 // PPMP Management Functions
 function savePPMP(status = 'draft', buttonId = null) {
+    return new Promise((resolve, reject) => {
   const ppmpNumber = document.getElementById('ppmp_number').value.trim();
   const planYear = document.getElementById('plan_year').value;
   const classification = 'ANNUAL'; // Default
@@ -491,6 +498,7 @@ function savePPMP(status = 'draft', buttonId = null) {
           item_description: row.querySelector('.item-description').value,
           unit: row.querySelector('.item-unit').value,
           unit_cost: parseFloat(row.querySelector('.unit_cost').value) || 0,
+          category: row.querySelector('.item-category').value || '',
           jan_qty: parseInt(row.querySelector('.jan').value) || 0,
           feb_qty: parseInt(row.querySelector('.feb').value) || 0,
           mar_qty: parseInt(row.querySelector('.mar').value) || 0,
@@ -572,19 +580,23 @@ function savePPMP(status = 'draft', buttonId = null) {
 
           const actionText = status === 'submitted' ? 'submitted' : 'saved as draft';
           alert(`PPMP ${actionText} successfully! PPMP Number: ${data.ppmp_number}`);
+          resolve(data);
           window.location.href = 'ppmp_list.php';
       } else {
           alert('Error: ' + data.message);
+          reject(new Error(data.message));
       }
   })
   .catch(error => {
       console.error('Save error:', error);
       alert('Network error: ' + error.message + '. Please check the console for details.');
+      reject(error);
   })
   .finally(() => {
       saveBtn.innerHTML = originalText;
       saveBtn.disabled = false;
   });
+   });
 }
 
 function loadPPMP() {
@@ -676,10 +688,11 @@ function populatePPMPForm(ppmpData) {
                dropdown.setAttribute('data-category', item.Category || '');
            }
 
-           // Set the description, unit, and cost fields
+           // Set the description, unit, cost, and category fields
            lastRow.querySelector('.item-description').value = item.Items_Description || '';
            lastRow.querySelector('.item-unit').value = item.Unit || '';
            lastRow.querySelector('.unit_cost').value = item.Unit_Cost || 0;
+           lastRow.querySelector('.item-category').value = item.Category || '';
        }
 
        // Set quantities (ensure non-negative) - handle case-insensitive column names
@@ -976,7 +989,7 @@ function loadItemsIntoModal() {
                         <div class="d-flex justify-content-between align-items-start">
                             <div class="flex-grow-1">
                                 <div class="font-weight-bold" style="color: #3498db;">
-                                    ${item.Item_Code ? '[' + item.Item_Code + '] ' : ''}${item.Item_Name || 'N/A'}
+                                    ${item.Item_Name || 'N/A'}
                                 </div>
                                 <div class="small" style="color: var(--text-primary); font-weight: 500;">
                                     ${item.Items_Description || 'No description'}
@@ -1196,7 +1209,7 @@ function initializeSearchableDropdown(row) {
                 div.setAttribute('data-code', item.Item_Code || '');
                 div.setAttribute('data-name', item.Item_Name || '');
                 div.setAttribute('data-category', item.Category || '');
-                div.textContent = (item.Item_Code ? '[' + item.Item_Code + '] ' : '') + item.Items_Description;
+                div.textContent = item.Items_Description;
                 div.addEventListener('click', function() {
                     selectItem(this);
                 });
@@ -1242,7 +1255,7 @@ function initializeSearchableDropdown(row) {
                 div.setAttribute('data-code', item.Item_Code || '');
                 div.setAttribute('data-name', item.Item_Name || '');
                 div.setAttribute('data-category', item.Category || '');
-                div.textContent = (item.Item_Code ? '[' + item.Item_Code + '] ' : '') + item.Items_Description;
+                div.textContent = item.Items_Description;
                 div.addEventListener('click', function() {
                     selectItem(this);
                 });
@@ -1373,6 +1386,7 @@ function initializeSearchableDropdown(row) {
 
         row.querySelector('.item-description').value = description;
         row.querySelector('.item-unit').value = unit;
+        row.querySelector('.item-category').value = category;
         row.querySelector('.unit_cost').value = cost;
 
         // Force height recalculation after content change
