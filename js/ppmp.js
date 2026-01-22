@@ -274,7 +274,7 @@ function addRowForItem(item) {
                 </div>
             </div>
         </td>
-        <td><textarea class="form-control item-description" rows="1" style="resize: none; overflow: hidden;">${item.Items_Description || ''}</textarea></td>
+        <td><textarea class="form-control item-description" rows="1" style="resize: none; overflow: hidden;" title="${item.Items_Description || ''}">${item.Items_Description || ''}</textarea></td>
         <td><input type="text" class="form-control item-unit" value="${item.Unit || ''}"></td>
         <td><input type="number" class="form-control jan" value="0" min="0" oninput="recalculateRow(this)"></td>
         <td><input type="number" class="form-control feb" value="0" min="0" oninput="recalculateRow(this)"></td>
@@ -292,16 +292,18 @@ function addRowForItem(item) {
         <td><input type="number" class="form-control nov" value="0" min="0" oninput="recalculateRow(this)"></td>
         <td><input type="number" class="form-control dec" value="0" min="0" oninput="recalculateRow(this)"></td>
         <td><input type="text" class="form-control q4total" value="0" readonly></td>
-        <td><input type="number" class="form-control unit_cost" value="${item.Unit_Cost || 0}"></td>
+        <td><input type="number" class="form-control unit_cost" value="${item.Unit_Cost || 0}" title="${item.Unit_Cost || 0}"></td>
         <td><input type="text" class="form-control total_qty" readonly value="0"></td>
         <td><input type="text" class="form-control total_cost" readonly value="0.00"></td>
-        <td><input type="text" class="form-control item-category" readonly></td>
+        <td><input type="text" class="form-control item-category" readonly value="${item.Category || ''}" title="${item.Category || ''}"></td>
         <td><button class="btn btn-danger btn-sm" onclick="deleteRow(this)">Delete</button></td>
     `;
 
     // Set the selected text to show item code if available
     const selectedText = row.querySelector('.selected-text');
-    selectedText.textContent = item.Item_Code ? '[' + item.Item_Code + '] ' + item.Items_Description : item.Items_Description;
+    const displayText = item.Item_Code ? '[' + item.Item_Code + '] ' + item.Items_Description : item.Items_Description;
+    selectedText.textContent = displayText;
+    selectedText.title = displayText;
 
   // Initialize searchable dropdown
   initializeSearchableDropdown(row);
@@ -379,8 +381,11 @@ function recalculateRow(input) {
 
   const totalQty = q1 + q2 + q3 + q4;
   const unitCost = parseFloat(row.querySelector('.unit_cost').value) || 0;
+  const totalCostValue = (totalQty * unitCost).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   row.querySelector('.total_qty').value = totalQty;
-  row.querySelector('.total_cost').value = (totalQty * unitCost).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const totalCostInput = row.querySelector('.total_cost');
+  totalCostInput.value = totalCostValue;
+  totalCostInput.title = totalCostValue;
 
   recalculateTotals();
 }
@@ -672,28 +677,41 @@ function populatePPMPForm(ppmpData) {
        // Set item selection
        const dropdown = lastRow.querySelector('.searchable-dropdown');
        const selectedText = dropdown.querySelector('.selected-text');
-       const itemId = entry.Item_ID;
+       const itemId = entry.Item_ID || entry.item_id;
 
-       // Find the corresponding item in itemsList
-       const item = itemsList.find(item => parseInt(item.ID) === parseInt(itemId));
-       if (item) {
-           selectedText.textContent = item.Item_Code ? '[' + item.Item_Code + '] ' + item.Items_Description : item.Items_Description;
+       // Use entry data directly instead of looking up in itemsList
+       const itemCode = entry.Item_Code || entry.item_code || '';
+       const itemName = entry.Item_Name || entry.item_name || '';
+       const itemDescription = entry.Item_Description || entry.item_description || '';
+       const unit = entry.Unit || entry.unit || '';
+       const unitCost = entry.Unit_Cost || entry.unit_cost || 0;
+       const category = entry.Category || entry.category || '';
 
-           // Add to selected items set to prevent duplicates
-           if (itemId) {
-               selectedItems.add(parseInt(itemId));
-               dropdown.setAttribute('data-selected-item', itemId);
-               dropdown.setAttribute('data-code', item.Item_Code || '');
-               dropdown.setAttribute('data-name', item.Item_Name || '');
-               dropdown.setAttribute('data-category', item.Category || '');
-           }
+       // Set the selected text to show item code and description
+       const displayText = itemCode ? '[' + itemCode + '] ' + itemDescription : itemDescription;
+       selectedText.textContent = displayText;
+       selectedText.title = displayText;
 
-           // Set the description, unit, cost, and category fields
-           lastRow.querySelector('.item-description').value = item.Items_Description || '';
-           lastRow.querySelector('.item-unit').value = item.Unit || '';
-           lastRow.querySelector('.unit_cost').value = item.Unit_Cost || 0;
-           lastRow.querySelector('.item-category').value = item.Category || '';
+       // Add to selected items set to prevent duplicates
+       if (itemId) {
+           selectedItems.add(parseInt(itemId));
+           dropdown.setAttribute('data-selected-item', itemId);
+           dropdown.setAttribute('data-code', itemCode);
+           dropdown.setAttribute('data-name', itemName);
+           dropdown.setAttribute('data-category', category);
        }
+
+       // Set the description, unit, cost, and category fields
+       const descTextarea = lastRow.querySelector('.item-description');
+       descTextarea.value = itemDescription;
+       descTextarea.title = itemDescription;
+       lastRow.querySelector('.item-unit').value = unit;
+       const costInput = lastRow.querySelector('.unit_cost');
+       costInput.value = unitCost;
+       costInput.title = unitCost;
+       const categoryInput = lastRow.querySelector('.item-category');
+       categoryInput.value = category;
+       categoryInput.title = category;
 
        // Set quantities (ensure non-negative) - handle case-insensitive column names
        lastRow.querySelector('.jan').value = Math.max(0, entry.Jan_Qty || entry.jan_qty || 0);

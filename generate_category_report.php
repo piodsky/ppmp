@@ -1,6 +1,57 @@
 <?php
-require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/../vendor/autoload.php'; // Autoload dependencies
 use Dotenv\Dotenv;
+
+// Load .env variables
+$dotenv = Dotenv::createImmutable(__DIR__ . '/../apiPPMP');
+$dotenv->load();
+
+require_once '../apiPPMP/config.php';
+
+// Check for token in cookie or Authorization header
+$token = null;
+
+// First check for token in cookie (secure method)
+if (isset($_COOKIE['auth_token'])) {
+    $token = $_COOKIE['auth_token'];
+}
+// Fallback to Authorization header
+elseif (isset($_SERVER['HTTP_AUTHORIZATION'])) {
+    if (strpos($_SERVER['HTTP_AUTHORIZATION'], 'Bearer ') === 0) {
+        $token = substr($_SERVER['HTTP_AUTHORIZATION'], 7);
+    }
+}
+
+if (!$token) {
+    header("Location: login.php");
+    exit();
+}
+
+// Validate token via API call
+$apiUrl = $_ENV['API_BASE_URL'] . '/api_verify_token.php';
+$context = stream_context_create([
+    'http' => [
+        'method' => 'POST',
+        'header' => [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . $token
+        ],
+        'timeout' => 10
+    ]
+]);
+
+$response = file_get_contents($apiUrl, false, $context);
+if ($response === false) {
+    header("Location: login.php");
+    exit();
+}
+
+$data = json_decode($response, true);
+if (!$data || $data['status'] !== 'success') {
+    header("Location: login.php");
+    exit();
+}
+
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -10,10 +61,46 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 // Check export type
 $exportType = isset($_GET['export']) ? $_GET['export'] : 'pdf';
 
+// Check if user data is valid
+$user = $data['user'] ?? null;
+if (!$user) {
+    if ($exportType === 'csv') {
+        header('Content-Type: text/plain');
+        echo 'Access Denied: Please log in first';
+        exit();
+    } elseif ($exportType === 'xlsx') {
+        // For XLSX, create error spreadsheet
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="Access_Denied_' . date('Y-m-d_H-i-s') . '.xlsx"');
+        header('Cache-Control: max-age=0');
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setCellValue('A1', 'Access Denied: Please log in first');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit();
+    } else {
+        // Default to PDF
+        header('Content-Type: application/pdf');
+        header('Cache-Control: private, max-age=0, must-revalidate');
+        header('Pragma: public');
+
+        $pdf = new CategoryPDF('L', 'mm', 'Legal');
+        $pdf->AddPage();
+        $pdf->SetFont('Arial', 'B', 16);
+        $pdf->SetTextColor(255, 0, 0);
+        $pdf->Cell(0, 20, 'Access Denied: Please log in first', 0, 1, 'C');
+        $pdf->Output('Access_Denied.pdf', 'I');
+        exit();
+    }
+}
+
 // Set headers based on export type
 if ($exportType === 'xlsx') {
     header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header('Content-Disposition: attachment;filename="Category_Report_' . (isset($_GET['category']) ? preg_replace('/[^A-Za-z0-9\-_]/', '_', $_GET['category']) : 'All') . '_' . date('Y-m-d_H-i-s') . '.xlsx"');
+    header('Content-Disposition: inline;filename="Category_Report_' . (isset($_GET['category']) ? preg_replace('/[^A-Za-z0-9\-_]/', '_', $_GET['category']) : 'All') . '_' . date('Y-m-d_H-i-s') . '.xlsx"');
     header('Cache-Control: max-age=0');
 } elseif ($exportType === 'csv') {
     header('Content-Type: text/csv');
@@ -28,21 +115,6 @@ if ($exportType === 'xlsx') {
 
 // Prevent any HTML output
 ob_start();
-
-// Load .env variables
-$dotenv = Dotenv::createImmutable(__DIR__ . '/../apiPPMP');
-$dotenv->load();
-
-$host     = $_ENV['DB_HOST'];
-$dbname   = $_ENV['DB_NAME'];
-$username = $_ENV['DB_USER'];
-$password = $_ENV['DB_PASS'];
-
-$conn = new PDO("mysql:host=$host;dbname=$dbname", $username, $password);
-$conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-require_once __DIR__ . "/../apiPPMP/token_helper.php";
-TokenHelper::init($conn);
 
 // Check if FPDF library exists
 $fpdf_path = __DIR__ . "/fpdf186/fpdf.php";
@@ -332,18 +404,6 @@ class CategoryPDF extends FPDF {
     }
 }
 
-// Validate token using TokenHelper
-$user = TokenHelper::getCurrentUser();
-if (!$user) {
-    // For PDF output, don't redirect - show error in PDF
-    $pdf = new CategoryPDF('L', 'mm', 'Legal');
-    $pdf->AddPage();
-    $pdf->SetFont('Arial', 'B', 16);
-    $pdf->SetTextColor(255, 0, 0);
-    $pdf->Cell(0, 20, 'Access Denied: Please log in first', 0, 1, 'C');
-    $pdf->Output('Access_Denied.pdf', 'I');
-    exit();
-}
 
 // Check if preview mode is requested
 $preview = isset($_GET['preview']) && $_GET['preview'] == '1';
@@ -586,13 +646,7 @@ try {
 }
 
 // Output based on export type
-if ($exportType === 'xlsx') {
-    // Generate XLSX file
-    generateCategoryXLSX($groupedItems, $departments, $currentYear, $approvedCount, $category);
-} elseif ($exportType === 'csv') {
-    // Generate CSV file
-    generateCategoryCSV($groupedItems, $departments, $currentYear, $approvedCount, $category);
-} else {
+if ($exportType === 'pdf') {
     // Default PDF output
     $safeCategory = preg_replace('/[^A-Za-z0-9\-_]/', '_', $category);
     $filename = 'Category_Report_' . $safeCategory . '_' . date('Y-m-d_H-i-s') . '.pdf';

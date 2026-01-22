@@ -45,6 +45,7 @@ document.addEventListener("DOMContentLoaded", function () {
       searchInput.addEventListener('input', filterItems);
     }
     loadAvailableYears();
+    loadCategories();
     loadConsolidatedItems();
   }, 500);
 });
@@ -69,6 +70,29 @@ function loadAvailableYears() {
     })
     .catch(err => {
       console.error("Error loading available years:", err);
+    });
+}
+
+function loadCategories() {
+  authenticatedFetch(`${API_BASE_URL}/get_categories.php`)
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        const categoryFilter = document.getElementById('categoryFilter');
+        if (categoryFilter) {
+          categoryFilter.innerHTML = '<option value="">Select Category</option>';
+
+          data.categories.forEach(category => {
+            const option = document.createElement('option');
+            option.value = category;
+            option.textContent = category;
+            categoryFilter.appendChild(option);
+          });
+        }
+      }
+    })
+    .catch(err => {
+      console.error("Error loading categories:", err);
     });
 }
 
@@ -224,12 +248,12 @@ function displayApprovedPPMPs(ppmpList) {
 
 function previewAPPReport() {
    // Open APP report in new window for preview
-   window.open('generate_app_report.php?preview=1', '_blank');
+   window.open(`${API_BASE_URL}/generate_app_report.php?preview=1`, '_blank');
 }
 
 function downloadAPPReport() {
    // Directly download the APP report PDF
-   window.location.href = 'generate_app_report.php';
+   window.location.href = `${API_BASE_URL}/generate_app_report.php`;
 }
 
 function filterItems() {
@@ -256,6 +280,58 @@ function filterItems() {
 
   // Keep all PPMP list
   displayApprovedPPMPs(allPPMPList);
+}
+
+function exportConsolidatedItems() {
+  // Get current year filter
+  const yearFilter = document.getElementById('yearFilter');
+  const selectedYear = yearFilter ? yearFilter.value : '';
+  const token = getAccessToken();
+  const url = selectedYear && selectedYear !== ""
+    ? `${API_BASE_URL}/generate_excel_report.php?type=consolidated&year=${selectedYear}&token=${encodeURIComponent(token)}`
+    : `${API_BASE_URL}/generate_excel_report.php?type=consolidated&token=${encodeURIComponent(token)}`;
+
+  // Trigger download by setting location
+  window.location.href = url;
+}
+
+function exportAPPReport() {
+  // Get current year filter
+  const yearFilter = document.getElementById('yearFilter');
+  const selectedYear = yearFilter ? yearFilter.value : '';
+  const token = getAccessToken();
+  const url = selectedYear && selectedYear !== ""
+    ? `${API_BASE_URL}/generate_excel_report.php?type=app&year=${selectedYear}&token=${encodeURIComponent(token)}`
+    : `${API_BASE_URL}/generate_excel_report.php?type=app&token=${encodeURIComponent(token)}`;
+
+  // Trigger download by setting location
+  window.location.href = url;
+}
+
+function exportAllCategoriesReport() {
+  // Get current year filter
+  const yearFilter = document.getElementById('yearFilter');
+  const selectedYear = yearFilter ? yearFilter.value : '';
+  const token = getAccessToken();
+  const url = selectedYear && selectedYear !== ""
+    ? `${API_BASE_URL}/generate_excel_report.php?type=category&year=${selectedYear}&token=${encodeURIComponent(token)}`
+    : `${API_BASE_URL}/generate_excel_report.php?type=category&token=${encodeURIComponent(token)}`;
+
+  // Trigger download by setting location
+  window.location.href = url;
+}
+
+function exportSummaryReport() {
+  // Get current year filter
+  const yearFilter = document.getElementById('yearFilter');
+  const selectedYear = yearFilter ? yearFilter.value : '';
+  const token = getAccessToken();
+  const url = selectedYear && selectedYear !== ""
+    ? `${API_BASE_URL}/generate_excel_report.php?type=summary&year=${selectedYear}&token=${encodeURIComponent(token)}`
+    : `${API_BASE_URL}/generate_excel_report.php?type=summary&token=${encodeURIComponent(token)}`;
+
+  // Trigger download by setting location
+  window.location.href = url;
 }
 
 function exportConsolidated() {
@@ -295,91 +371,153 @@ function exportDepartmentReport() {
   // Get current year filter
   const yearFilter = document.getElementById('yearFilter');
   const selectedYear = yearFilter ? yearFilter.value : '';
+  const token = getAccessToken();
   const url = selectedYear && selectedYear !== ""
-    ? `${API_BASE_URL}/api_get_department_report.php?year=${selectedYear}`
-    : `${API_BASE_URL}/api_get_department_report.php`;
+    ? `${API_BASE_URL}/generate_excel_report.php?type=department&year=${selectedYear}&token=${encodeURIComponent(token)}`
+    : `${API_BASE_URL}/generate_excel_report.php?type=department&token=${encodeURIComponent(token)}`;
 
-  // Get current data
-  authenticatedFetch(url)
+  // Trigger download by setting location
+  window.location.href = url;
+}
+
+function loadCategoryReport() {
+  const categoryFilter = document.getElementById('categoryFilter');
+  const selectedCategory = categoryFilter ? categoryFilter.value : '';
+
+  if (!selectedCategory) {
+    alert('Please select a category first.');
+    return;
+  }
+
+  const tableBody = document.getElementById('categoryReportTableBody');
+  if (!tableBody) {
+    console.error('categoryReportTableBody element not found');
+    return;
+  }
+
+  // Show loading
+  tableBody.innerHTML = `
+    <tr>
+      <td colspan="16" class="text-center">
+        <i class="fas fa-spinner fa-spin fa-2x"></i>
+        <p class="mt-2">Loading category report...</p>
+      </td>
+    </tr>
+  `;
+
+  authenticatedFetch(`${API_BASE_URL}/api_category_report_data.php?category=${encodeURIComponent(selectedCategory)}`)
     .then(res => res.json())
     .then(data => {
       if (data.success) {
-        // Create Excel-compatible CSV content with BOM for proper encoding
-        const BOM = '\uFEFF'; // Byte Order Mark for UTF-8
-        let csvContent = BOM;
-
-        // Add report title and metadata as separate rows
-        const reportYear = selectedYear && selectedYear !== "" ? selectedYear : new Date().getFullYear();
-        csvContent += `"Department Consolidated Report",,,,,,,,,,,\n`;
-        csvContent += `"Year: ${reportYear}",,,,,,,,,,,\n`;
-        csvContent += `"Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}",,,,,,,,,,,\n`;
-        csvContent += ',,,,,,,,,,,\n'; // Empty row
-
-        // Create header row with proper comma separation
-        csvContent += '"Item Code","Item Name & Specifications","Unit"';
-
-        // Add department columns
-        data.departments.forEach(dept => {
-          csvContent += `,"${dept}"`;
-        });
-        csvContent += ',"Total Quantity","Unit Cost","Total Cost"\n';
-
-        // Add data rows
-        data.export_data.forEach(item => {
-          // Escape quotes and format data for Excel
-          const itemCode = (item.item_code || 'N/A').replace(/"/g, '""');
-          const itemName = (item.item_name || 'N/A').replace(/"/g, '""');
-          const description = (item.description || 'N/A').replace(/"/g, '""');
-          const unit = (item.unit || 'N/A').replace(/"/g, '""');
-
-          csvContent += `"${itemCode}","${itemName} - ${description}","${unit}"`;
-
-          // Add department quantities
-          data.departments.forEach(dept => {
-            const qty = item[dept] || 0;
-            csvContent += `,${qty}`;
-          });
-
-          // Format numbers for Excel
-          const totalQty = parseInt(item.total_quantity) || 0;
-          const unitCost = parseFloat(item.unit_cost) || 0;
-          const totalCost = parseFloat(item.total_cost) || 0;
-
-          csvContent += `,${totalQty},"₱${unitCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}","₱${totalCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}"\n`;
-        });
-
-        // Add summary section
-        csvContent += ',,,,,,,,,,,\n'; // Empty row
-        csvContent += '"SUMMARY",,,,,,,,,,,\n';
-
-        const totalItems = data.export_data.length;
-        const grandTotalCost = data.export_data.reduce((sum, item) => sum + (parseFloat(item.total_cost) || 0), 0);
-
-        csvContent += `"Total Unique Items:",${totalItems},,,,,,,,,,\n`;
-        csvContent += `"Grand Total Cost:","₱${grandTotalCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}",,,,,,,,,,\n`;
-
-        // Create and download file as proper CSV
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement("a");
-        const blobUrl = URL.createObjectURL(blob);
-        const yearSuffix = selectedYear && selectedYear !== "" ? `_${selectedYear}` : '';
-        link.setAttribute("href", blobUrl);
-        link.setAttribute("download", `Department_Consolidated_Report${yearSuffix}_${new Date().toISOString().split('T')[0]}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        // Clean up
-        URL.revokeObjectURL(blobUrl);
+        displayCategoryReport(data);
       } else {
-        alert('Error: ' + data.message);
+        showError('Failed to load category report: ' + (data.message || 'Unknown error'));
       }
     })
     .catch(err => {
-      console.error('Export error:', err);
-      alert('Network error. Please try again.');
+      console.error('Error loading category report:', err);
+      showError('Network error. Please try again.');
     });
+}
+
+function displayCategoryReport(data) {
+  const tableHead = document.getElementById('categoryReportTableHead');
+  const tableBody = document.getElementById('categoryReportTableBody');
+
+  if (!tableHead || !tableBody) {
+    console.error('Category report table elements not found');
+    return;
+  }
+
+  // Update table headers with departments
+  const departments = data.departments || [];
+  let headerHtml = `
+    <tr>
+      <th>Item Code</th>
+      <th>Item Name & Specifications</th>
+      <th>Unit</th>
+      <th colspan="${departments.length}">Departments</th>
+      <th>Total Qty</th>
+      <th>Unit Cost</th>
+      <th>Total Cost</th>
+    </tr>
+    <tr class="bg-light">
+      <th colspan="3"></th>
+  `;
+
+  departments.forEach(dept => {
+    headerHtml += `<th>${dept}</th>`;
+  });
+
+  headerHtml += `
+      <th colspan="3"></th>
+    </tr>
+  `;
+
+  tableHead.innerHTML = headerHtml;
+
+  // Display data
+  if (!data.data || data.data.length === 0) {
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="${6 + departments.length}" class="text-center py-4">
+          <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+          <h5 class="text-muted">No items found for this category</h5>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tableBody.innerHTML = '';
+
+  data.data.forEach(item => {
+    let rowHtml = `
+      <tr>
+        <td>${item.item_code || ''}</td>
+        <td>${item.item_name}</td>
+        <td>${item.unit || ''}</td>
+    `;
+
+    item.departments.forEach(qty => {
+      rowHtml += `<td>${qty}</td>`;
+    });
+
+    rowHtml += `
+        <td>${item.total_quantity}</td>
+        <td>${item.unit_cost}</td>
+        <td>${item.total_cost}</td>
+      </tr>
+    `;
+
+    tableBody.innerHTML += rowHtml;
+  });
+}
+
+function exportCategoryReport() {
+  const categoryFilter = document.getElementById('categoryFilter');
+  const selectedCategory = categoryFilter ? categoryFilter.value : '';
+
+  if (!selectedCategory) {
+    alert('Please select a category first.');
+    return;
+  }
+
+  // Get current year filter
+  const yearFilter = document.getElementById('yearFilter');
+  const selectedYear = yearFilter ? yearFilter.value : '';
+  const token = getAccessToken();
+  const url = selectedYear && selectedYear !== ""
+    ? `${API_BASE_URL}/generate_excel_report.php?type=category&category=${encodeURIComponent(selectedCategory)}&year=${selectedYear}&token=${encodeURIComponent(token)}`
+    : `${API_BASE_URL}/generate_excel_report.php?type=category&category=${encodeURIComponent(selectedCategory)}&token=${encodeURIComponent(token)}`;
+
+  // Trigger download by setting location
+  window.location.href = url;
+}
+
+function downloadCategoryReport() {
+  // For now, same as export (Excel)
+  exportCategoryReport();
 }
 
 function showError(message) {

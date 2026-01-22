@@ -78,6 +78,10 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
 
+  <script>
+  const accessToken = <?php echo json_encode($token); ?>;
+  </script>
+
   <style>
       :root {
           /* Light theme - White + Gray + Navy */
@@ -207,7 +211,7 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
       /* Add scrollable container for report tables */
       .report-table-container {
           max-height: 600px;
-          overflow-y: auto;
+          overflow: auto;
           border: 1px solid var(--border-light);
           border-radius: 8px;
           margin-top: 10px;
@@ -218,6 +222,28 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
       }
 
       .report-table-container thead th {
+          position: sticky;
+          top: 0;
+          background: var(--table-header-bg);
+          color: var(--text-on-dark);
+          z-index: 10;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+
+      /* Make consolidated table also scrollable with both horizontal and vertical */
+      .table-responsive {
+          max-height: 600px;
+          overflow: auto;
+          border: 1px solid var(--border-light);
+          border-radius: 8px;
+          margin-top: 10px;
+      }
+
+      .table-responsive table {
+          margin-bottom: 0;
+      }
+
+      .table-responsive thead th {
           position: sticky;
           top: 0;
           background: var(--table-header-bg);
@@ -334,7 +360,12 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
       <div class="row mt-4">
         <div class="col-12">
           <div class="form-section">
-            <h6 class="section-title">📄 Annual Procurement Plan (APP) Report</h6>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="section-title mb-0">📄 Annual Procurement Plan (APP) Report</h6>
+              <button class="btn btn-success btn-sm" onclick="exportAPPReport()">
+                <i class="fas fa-file-excel"></i> Export to Excel
+              </button>
+            </div>
             <div class="report-table-container">
               <table class="table table-striped" id="appReportTable">
                 <thead>
@@ -392,7 +423,12 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
       <div class="row mt-4">
         <div class="col-12">
           <div class="form-section">
-            <h6 class="section-title">🏢 Department Consolidated Report</h6>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="section-title mb-0">🏢 Department Consolidated Report</h6>
+              <button class="btn btn-success btn-sm" onclick="exportDepartmentReport()">
+                <i class="fas fa-file-excel"></i> Export to Excel
+              </button>
+            </div>
             <div class="report-table-container">
               <table class="table table-striped" id="deptReportTable">
                 <thead id="deptReportTableHead">
@@ -437,14 +473,16 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
                 </button>
               </div>
               <div class="col-md-4">
+                <div class="dropdown">
+                  <button class="btn btn-danger dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="fas fa-file-excel"></i> Export
                   </button>
-                  <button class="btn btn-danger dropdown-toggle dropdown-toggle-split" data-toggle="dropdown" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                  </button>
-                    <a class="dropdown-item" href="#" onclick="downloadCategoryReport()">
-                    </a>
-                    <a class="dropdown-item" href="#" onclick="exportCategoryReport()">
-                    </a>
-                  </div>
+                  <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="#" onclick="downloadCategoryReport()"><i class="fas fa-download"></i> Download Report</a></li>
+                    <li><a class="dropdown-item" href="#" onclick="exportCategoryReport()"><i class="fas fa-file-excel"></i> Export to Excel</a></li>
+                  </ul>
+                </div>
+              </div>
                 </div>
               </div>
             </div>
@@ -500,7 +538,7 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
   }
 
   function getAccessToken() {
-      return localStorage.getItem('access_token');
+      return accessToken;
   }
 
   // Authenticated fetch function (no token refresh needed since tokens don't expire)
@@ -701,25 +739,25 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
                       <td>${item.feb_qty}</td>
                       <td>${item.mar_qty}</td>
                       <td class="font-weight-bold text-success">${q1_qty}</td>
-                      <td class="font-weight-bold text-primary">${item.q1_amount}</td>
+                      <td class="font-weight-bold text-primary">${parseFloat(item.q1_amount).toFixed(3)}</td>
                       <td>${item.apr_qty}</td>
                       <td>${item.may_qty}</td>
                       <td>${item.jun_qty}</td>
                       <td class="font-weight-bold text-success">${q2_qty}</td>
-                      <td class="font-weight-bold text-primary">${item.q2_amount}</td>
+                      <td class="font-weight-bold text-primary">${parseFloat(item.q2_amount).toFixed(3)}</td>
                       <td>${item.jul_qty}</td>
                       <td>${item.aug_qty}</td>
                       <td>${item.sep_qty}</td>
                       <td class="font-weight-bold text-success">${q3_qty}</td>
-                      <td class="font-weight-bold text-primary">${item.q3_amount}</td>
+                      <td class="font-weight-bold text-primary">${parseFloat(item.q3_amount).toFixed(3)}</td>
                       <td>${item.oct_qty}</td>
                       <td>${item.nov_qty}</td>
                       <td>${item.dec_qty}</td>
                       <td class="font-weight-bold text-success">${q4_qty}</td>
-                      <td class="font-weight-bold text-primary">${item.q4_amount}</td>
+                      <td class="font-weight-bold text-primary">${parseFloat(item.q4_amount).toFixed(3)}</td>
                       <td>${item.total_quantity}</td>
-                      <td>${item.unit_cost}</td>
-                      <td>${item.total_cost}</td>
+                      <td>${parseFloat(item.unit_cost).toFixed(3)}</td>
+                      <td>${parseFloat(item.total_cost).toFixed(3)}</td>
                   </tr>
               `;
           }
@@ -978,7 +1016,8 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
       }
       if (confirm('Export Excel (XLSX) report for category: ' + selectedCategory + '?')) {
           const token = getAccessToken();
-          window.location.href = 'generate_category_report.php?export=xlsx&category=' + encodeURIComponent(selectedCategory) + '&token=' + encodeURIComponent(token);
+          const url = 'generate_category_report.php?export=csv&category=' + encodeURIComponent(selectedCategory) + '&token=' + encodeURIComponent(token);
+          window.open(url, '_blank');
       }
   }
 
@@ -1101,41 +1140,46 @@ $profile_picture = $data['user']['profile_picture'] ?? '';
 
   // Export consolidated items
   function exportConsolidatedItems() {
-      if (confirm('Export consolidated items to Excel (XLSX)?')) {
+      if (confirm('Export consolidated items to CSV?')) {
           const token = getAccessToken();
-          window.location.href = 'generate_consolidated_report.php?export=xlsx&token=' + encodeURIComponent(token);
+          const url = 'generate_consolidated_report.php?export=csv&token=' + encodeURIComponent(token);
+          window.open(url, '_blank');
       }
   }
 
   // Export APP Report
   function exportAPPReport() {
-      if (confirm('Export APP report to Excel (XLSX)?')) {
+      if (confirm('Export APP report to CSV?')) {
           const token = getAccessToken();
-          window.location.href = 'generate_app_report.php?export=xlsx&token=' + encodeURIComponent(token);
+          const url = 'generate_app_report.php?export=csv&token=' + encodeURIComponent(token);
+          window.open(url, '_blank');
       }
   }
 
   // Export All Categories Report
   function exportAllCategoriesReport() {
-      if (confirm('Export all categories report to Excel (XLSX)?')) {
+      if (confirm('Export all categories report to CSV?')) {
           const token = getAccessToken();
-          window.location.href = 'generate_category_report.php?export=xlsx&all=1&token=' + encodeURIComponent(token);
+          const url = 'generate_category_report.php?export=csv&all=1&token=' + encodeURIComponent(token);
+          window.open(url, '_blank');
       }
   }
 
   // Export Summary Report
   function exportSummaryReport() {
-      if (confirm('Export summary report to Excel (XLSX)?')) {
+      if (confirm('Export summary report to CSV?')) {
           const token = getAccessToken();
-          window.location.href = 'generate_excel_report.php?summary=1&token=' + encodeURIComponent(token);
+          const url = 'generate_excel_report.php?summary=1&export=csv&token=' + encodeURIComponent(token);
+          window.open(url, '_blank');
       }
   }
 
   // Export department report
   function exportDepartmentReport() {
-      if (confirm('Export department report to Excel (XLSX)?')) {
+      if (confirm('Export department report to CSV?')) {
           const token = getAccessToken();
-          window.location.href = 'generate_department_report.php?export=xlsx&token=' + encodeURIComponent(token);
+          const url = 'generate_department_report.php?export=csv&token=' + encodeURIComponent(token);
+          window.open(url, '_blank');
       }
   }
 

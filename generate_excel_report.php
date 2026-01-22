@@ -1,49 +1,133 @@
 <?php
-require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/../vendor/autoload.php'; // Autoload dependencies
 use Dotenv\Dotenv;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
-use PhpOffice\PhpSpreadsheet\Style\Alignment;
-use PhpOffice\PhpSpreadsheet\Style\Border;
-use PhpOffice\PhpSpreadsheet\Style\Fill;
 
 // Load .env variables
 $dotenv = Dotenv::createImmutable(__DIR__ . '/../apiPPMP');
 $dotenv->load();
 
-$host     = $_ENV['DB_HOST'];
-$dbname   = $_ENV['DB_NAME'];
-$username = $_ENV['DB_USER'];
-$password = $_ENV['DB_PASS'];
+require_once '../apiPPMP/config.php';
 
-$conn = new PDO("mysql:host=$host;dbname=$dbname", $username, $password);
-$conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+// Check for token in cookie or Authorization header
+$token = null;
 
-require_once __DIR__ . "/../apiPPMP/token_helper.php";
-TokenHelper::init($conn);
+// First check for token in cookie (secure method)
+if (isset($_COOKIE['auth_token'])) {
+    $token = $_COOKIE['auth_token'];
+}
+// Fallback to Authorization header
+elseif (isset($_SERVER['HTTP_AUTHORIZATION'])) {
+    if (strpos($_SERVER['HTTP_AUTHORIZATION'], 'Bearer ') === 0) {
+        $token = substr($_SERVER['HTTP_AUTHORIZATION'], 7);
+    }
+}
 
-// Validate token
-$user = TokenHelper::getCurrentUser();
-if (!$user) {
-    header('Content-Type: application/json');
-    echo json_encode(['status' => 'error', 'message' => 'Authentication required']);
+if (!$token) {
+    header("Location: login.php");
     exit();
 }
 
-// Set headers for Excel download
-header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-header('Content-Disposition: attachment;filename="PPMP_All_Reports_' . date('Y-m-d_H-i-s') . '.xlsx"');
-header('Cache-Control: max-age=0');
+// Validate token via API call
+$apiUrl = $_ENV['API_BASE_URL'] . '/api_verify_token.php';
+$context = stream_context_create([
+    'http' => [
+        'method' => 'POST',
+        'header' => [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . $token
+        ],
+        'timeout' => 10
+    ]
+]);
+
+$response = file_get_contents($apiUrl, false, $context);
+if ($response === false) {
+    header("Location: login.php");
+    exit();
+}
+
+$data = json_decode($response, true);
+if (!$data || $data['status'] !== 'success') {
+    header("Location: login.php");
+    exit();
+}
+
+// Set timezone to Asia/Shanghai
+date_default_timezone_set('Asia/Shanghai');
+
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Writer\Csv;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+
+// Get report type from URL parameter
+$type = isset($_GET['type']) ? $_GET['type'] : 'all';
+$year = isset($_GET['year']) ? $_GET['year'] : null;
+$exportType = isset($_GET['export']) ? $_GET['export'] : 'xlsx';
+
+// Check if user data is valid
+$user = $data['user'] ?? null;
+if (!$user) {
+    if ($exportType === 'csv') {
+        header('Content-Type: text/plain');
+        echo 'Access Denied: Please log in first';
+        exit();
+    } else {
+        header('Content-Type: application/json');
+        echo json_encode(['status' => 'error', 'message' => 'Authentication required']);
+        exit();
+    }
+}
+
+// Set headers based on export type
+if ($exportType === 'csv') {
+    $filename = 'PPMP_Report_' . date('Y-m-d_H-i-s') . '.csv';
+    if ($type !== 'all') {
+        $filename = 'PPMP_' . ucfirst($type) . '_Report_' . date('Y-m-d_H-i-s') . '.csv';
+    }
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment;filename="' . $filename . '"');
+    header('Cache-Control: max-age=0');
+} else {
+    $filename = 'PPMP_Report_' . date('Y-m-d_H-i-s') . '.xlsx';
+    if ($type !== 'all') {
+        $filename = 'PPMP_' . ucfirst($type) . '_Report_' . date('Y-m-d_H-i-s') . '.xlsx';
+    }
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: inline;filename="' . $filename . '"');
+    header('Cache-Control: max-age=0');
+}
 
 // Create new Spreadsheet
 $spreadsheet = new Spreadsheet();
 
 // Set document properties
+$title = 'PPMP Report';
+$subject = 'PPMP Report';
+if ($type === 'consolidated') {
+    $title = 'Consolidated PPMP Items Report';
+    $subject = 'Consolidated Items from all approved PPMP documents';
+} elseif ($type === 'app') {
+    $title = 'Annual Procurement Plan (APP) Report';
+    $subject = 'APP Report with quarterly breakdown';
+} elseif ($type === 'department') {
+    $title = 'Department Consolidated Report';
+    $subject = 'Consolidated items by department';
+} elseif ($type === 'category') {
+    $title = 'Category Consolidated Report';
+    $subject = 'Consolidated items by category';
+} elseif ($type === 'summary') {
+    $title = 'PPMP Summary Report';
+    $subject = 'Summary statistics of PPMP data';
+}
+
 $spreadsheet->getProperties()
     ->setCreator('PPMP Management System')
-    ->setTitle('Consolidated PPMP Reports')
-    ->setSubject('All PPMP Reports - Consolidated Items, APP, Department, Category')
-    ->setDescription('Generated consolidated Excel report containing all PPMP data');
+    ->setTitle($title)
+    ->setSubject($subject)
+    ->setDescription('Generated Excel report from PPMP Management System');
 
 // Function to style headers
 function styleHeader($sheet, $range) {
@@ -67,8 +151,9 @@ function styleData($sheet, $range) {
 // ==========================================
 // SHEET 1: CONSOLIDATED ITEMS
 // ==========================================
-$sheet1 = $spreadsheet->getActiveSheet();
-$sheet1->setTitle('Consolidated Items');
+if ($type === 'all' || $type === 'consolidated') {
+    $sheet1 = $spreadsheet->getActiveSheet();
+    $sheet1->setTitle('Consolidated Items');
 
 // Add header information
 $sheet1->setCellValue('A1', 'Republic of the Philippines');
@@ -103,26 +188,35 @@ $sheet1->setCellValue('I' . $row, 'PPMP Numbers');
 styleHeader($sheet1, 'A' . $row . ':I' . $row);
 
 // Get consolidated items data
+$whereClause = "WHERE p.Status = 'approved'";
+if ($year) {
+    $whereClause .= " AND p.Plan_Year = ?";
+}
+
 $stmt = $conn->prepare("
     SELECT
         i.Item_Code,
         i.Item_Name,
-        i.Item_Description,
+        i.Items_Description AS Item_Description,
         i.Unit,
         i.Unit_Cost,
         SUM(e.Total_Qty) as total_quantity,
         SUM(e.Total_Cost) as total_cost,
         GROUP_CONCAT(DISTINCT p.PPMP_Number ORDER BY p.PPMP_Number) as ppmp_numbers,
-        c.Category
+        i.Category
     FROM tbl_ppmp_entries e
     INNER JOIN tbl_ppmp_documents p ON e.PPMP_ID = p.ID
     INNER JOIN tbl_ppmp_bac_items i ON e.Item_ID = i.ID
-    INNER JOIN tbl_ppmp_categories c ON i.Category = c.Category_Name
-    WHERE p.Status = 'approved'
-    GROUP BY i.Item_Code, i.Item_Name, i.Item_Description, i.Unit, i.Unit_Cost, c.Category
-    ORDER BY c.Category, i.Item_Code
+    {$whereClause}
+    GROUP BY i.Item_Code, i.Item_Name, i.Items_Description, i.Unit, i.Unit_Cost, i.Category
+    ORDER BY i.Category, i.Item_Code
 ");
-$stmt->execute();
+
+if ($year) {
+    $stmt->execute([$year]);
+} else {
+    $stmt->execute();
+}
 $consolidatedItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Add data rows
@@ -149,9 +243,9 @@ foreach($consolidatedItems as $item) {
     $sheet1->setCellValue('C' . $row, $item['Item_Name'] ?: '');
     $sheet1->setCellValue('D' . $row, $item['Item_Description'] ?: '');
     $sheet1->setCellValue('E' . $row, $item['Unit'] ?: '');
-    $sheet1->setCellValue('F' . $row, $item['Unit_Cost'] ? '₱' . number_format($item['Unit_Cost'], 2) : '');
+    $sheet1->setCellValue('F' . $row, $item['Unit_Cost'] ? number_format($item['Unit_Cost'], 2) : '');
     $sheet1->setCellValue('G' . $row, $item['total_quantity'] ?: 0);
-    $sheet1->setCellValue('H' . $row, $item['total_cost'] ? '₱' . number_format($item['total_cost'], 2) : '');
+    $sheet1->setCellValue('H' . $row, $item['total_cost'] ? number_format($item['total_cost'], 2) : '');
     $sheet1->setCellValue('I' . $row, $item['ppmp_numbers'] ?: '');
 
     $row++;
@@ -165,10 +259,12 @@ styleData($sheet1, $dataRange);
 foreach(range('A', 'I') as $columnID) {
     $sheet1->getColumnDimension($columnID)->setAutoSize(true);
 }
+}
 
 // ==========================================
 // SHEET 2: APP REPORT
 // ==========================================
+if ($type === 'all' || $type === 'app') {
 $sheet2 = $spreadsheet->createSheet();
 $sheet2->setTitle('APP Report');
 
@@ -218,36 +314,48 @@ $sheet2->setCellValue('V' . $row, 'Total Cost');
 styleHeader($sheet2, 'A' . $row . ':V' . $row);
 
 // Get APP report data
+$whereClause = "WHERE p.Status = 'approved'";
+if ($year) {
+    $whereClause .= " AND p.Plan_Year = ?";
+} else {
+    $whereClause .= " AND p.Plan_Year = YEAR(CURDATE())";
+}
+
 $stmt = $conn->prepare("
     SELECT
         i.Item_Code,
         i.Item_Name,
-        i.Item_Description,
+        i.Items_Description AS Item_Description,
         i.Unit,
         i.Unit_Cost,
-        c.Category,
-        COALESCE(SUM(CASE WHEN MONTH(e.Schedule_Date) = 1 THEN e.Total_Qty END), 0) as jan_qty,
-        COALESCE(SUM(CASE WHEN MONTH(e.Schedule_Date) = 2 THEN e.Total_Qty END), 0) as feb_qty,
-        COALESCE(SUM(CASE WHEN MONTH(e.Schedule_Date) = 3 THEN e.Total_Qty END), 0) as mar_qty,
-        COALESCE(SUM(CASE WHEN MONTH(e.Schedule_Date) = 4 THEN e.Total_Qty END), 0) as apr_qty,
-        COALESCE(SUM(CASE WHEN MONTH(e.Schedule_Date) = 5 THEN e.Total_Qty END), 0) as may_qty,
-        COALESCE(SUM(CASE WHEN MONTH(e.Schedule_Date) = 6 THEN e.Total_Qty END), 0) as jun_qty,
-        COALESCE(SUM(CASE WHEN MONTH(e.Schedule_Date) = 7 THEN e.Total_Qty END), 0) as jul_qty,
-        COALESCE(SUM(CASE WHEN MONTH(e.Schedule_Date) = 8 THEN e.Total_Qty END), 0) as aug_qty,
-        COALESCE(SUM(CASE WHEN MONTH(e.Schedule_Date) = 9 THEN e.Total_Qty END), 0) as sep_qty,
-        COALESCE(SUM(CASE WHEN MONTH(e.Schedule_Date) = 10 THEN e.Total_Qty END), 0) as oct_qty,
-        COALESCE(SUM(CASE WHEN MONTH(e.Schedule_Date) = 11 THEN e.Total_Qty END), 0) as nov_qty,
-        COALESCE(SUM(CASE WHEN MONTH(e.Schedule_Date) = 12 THEN e.Total_Qty END), 0) as dec_qty,
+        i.Category,
+        SUM(e.Jan_Qty) as jan_qty,
+        SUM(e.Feb_Qty) as feb_qty,
+        SUM(e.Mar_Qty) as mar_qty,
+        SUM(e.Apr_Qty) as apr_qty,
+        SUM(e.May_Qty) as may_qty,
+        SUM(e.Jun_Qty) as jun_qty,
+        SUM(e.Jul_Qty) as jul_qty,
+        SUM(e.Aug_Qty) as aug_qty,
+        SUM(e.Sep_Qty) as sep_qty,
+        SUM(e.Oct_Qty) as oct_qty,
+        SUM(e.Nov_Qty) as nov_qty,
+        SUM(e.Dec_Qty) as dec_qty,
         SUM(e.Total_Qty) as total_quantity,
         SUM(e.Total_Cost) as total_cost
     FROM tbl_ppmp_entries e
     INNER JOIN tbl_ppmp_documents p ON e.PPMP_ID = p.ID
     INNER JOIN tbl_ppmp_bac_items i ON e.Item_ID = i.ID
-    INNER JOIN tbl_ppmp_categories c ON i.Category = c.Category_Name
-    WHERE p.Status = 'approved' AND YEAR(e.Schedule_Date) = YEAR(CURDATE())
-    GROUP BY i.Item_Code, i.Item_Name, i.Item_Description, i.Unit, i.Unit_Cost, c.Category
-    ORDER BY c.Category, i.Item_Code
+    {$whereClause}
+    GROUP BY i.Item_Code, i.Item_Name, i.Items_Description, i.Unit, i.Unit_Cost, i.Category
+    ORDER BY i.Category, i.Item_Code
 ");
+
+if ($year) {
+    $stmt->execute([$year]);
+} else {
+    $stmt->execute();
+}
 $stmt->execute();
 $appData = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -280,22 +388,22 @@ foreach($appData as $item) {
     $sheet2->setCellValue('D' . $row, $item['jan_qty'] ?: 0);
     $sheet2->setCellValue('E' . $row, $item['feb_qty'] ?: 0);
     $sheet2->setCellValue('F' . $row, $item['mar_qty'] ?: 0);
-    $sheet2->setCellValue('G' . $row, $q1_amount ? '₱' . number_format($q1_amount, 2) : '₱0.00');
+    $sheet2->setCellValue('G' . $row, $q1_amount ? number_format($q1_amount, 2) : '0.00');
     $sheet2->setCellValue('H' . $row, $item['apr_qty'] ?: 0);
     $sheet2->setCellValue('I' . $row, $item['may_qty'] ?: 0);
     $sheet2->setCellValue('J' . $row, $item['jun_qty'] ?: 0);
-    $sheet2->setCellValue('K' . $row, $q2_amount ? '₱' . number_format($q2_amount, 2) : '₱0.00');
+    $sheet2->setCellValue('K' . $row, $q2_amount ? number_format($q2_amount, 2) : '0.00');
     $sheet2->setCellValue('L' . $row, $item['jul_qty'] ?: 0);
     $sheet2->setCellValue('M' . $row, $item['aug_qty'] ?: 0);
     $sheet2->setCellValue('N' . $row, $item['sep_qty'] ?: 0);
-    $sheet2->setCellValue('O' . $row, $q3_amount ? '₱' . number_format($q3_amount, 2) : '₱0.00');
+    $sheet2->setCellValue('O' . $row, $q3_amount ? number_format($q3_amount, 2) : '0.00');
     $sheet2->setCellValue('P' . $row, $item['oct_qty'] ?: 0);
     $sheet2->setCellValue('Q' . $row, $item['nov_qty'] ?: 0);
     $sheet2->setCellValue('R' . $row, $item['dec_qty'] ?: 0);
-    $sheet2->setCellValue('S' . $row, $q4_amount ? '₱' . number_format($q4_amount, 2) : '₱0.00');
+    $sheet2->setCellValue('S' . $row, $q4_amount ? number_format($q4_amount, 2) : '0.00');
     $sheet2->setCellValue('T' . $row, $item['total_quantity'] ?: 0);
-    $sheet2->setCellValue('U' . $row, $item['Unit_Cost'] ? '₱' . number_format($item['Unit_Cost'], 2) : '');
-    $sheet2->setCellValue('V' . $row, $item['total_cost'] ? '₱' . number_format($item['total_cost'], 2) : '');
+    $sheet2->setCellValue('U' . $row, $item['Unit_Cost'] ? number_format($item['Unit_Cost'], 2) : '');
+    $sheet2->setCellValue('V' . $row, $item['total_cost'] ? number_format($item['total_cost'], 2) : '');
 
     $row++;
 }
@@ -308,10 +416,12 @@ styleData($sheet2, $dataRange);
 foreach(range('A', 'V') as $columnID) {
     $sheet2->getColumnDimension($columnID)->setAutoSize(true);
 }
+}
 
 // ==========================================
 // SHEET 3: DEPARTMENT REPORT
 // ==========================================
+if ($type === 'all' || $type === 'department') {
 $sheet3 = $spreadsheet->createSheet();
 $sheet3->setTitle('Department Report');
 
@@ -359,26 +469,35 @@ $headerRange = 'A' . $row . ':' . chr(65 + count($departments) + 5) . $row;
 styleHeader($sheet3, $headerRange);
 
 // Get department report data
+$whereClause = "WHERE p.Status = 'approved'";
+if ($year) {
+    $whereClause .= " AND p.Plan_Year = ?";
+}
+
 $stmt = $conn->prepare("
     SELECT
         i.Item_Code,
         i.Item_Name,
-        i.Item_Description,
+        i.Items_Description AS Item_Description,
         i.Unit,
         i.Unit_Cost,
-        c.Category,
+        i.Category,
         p.Department,
         SUM(e.Total_Qty) as total_quantity,
         SUM(e.Total_Cost) as total_cost
     FROM tbl_ppmp_entries e
     INNER JOIN tbl_ppmp_documents p ON e.PPMP_ID = p.ID
     INNER JOIN tbl_ppmp_bac_items i ON e.Item_ID = i.ID
-    INNER JOIN tbl_ppmp_categories c ON i.Category = c.Category_Name
-    WHERE p.Status = 'approved'
-    GROUP BY i.Item_Code, i.Item_Name, i.Item_Description, i.Unit, i.Unit_Cost, c.Category, p.Department
-    ORDER BY c.Category, i.Item_Code, p.Department
+    {$whereClause}
+    GROUP BY i.Item_Code, i.Item_Name, i.Items_Description, i.Unit, i.Unit_Cost, i.Category, p.Department
+    ORDER BY i.Category, i.Item_Code, p.Department
 ");
-$stmt->execute();
+
+if ($year) {
+    $stmt->execute([$year]);
+} else {
+    $stmt->execute();
+}
 $deptData = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Group by item
@@ -434,8 +553,8 @@ foreach($groupedDeptData as $item) {
 
     // Totals
     $sheet3->setCellValue($col++ . $row, $item['total_quantity']);
-    $sheet3->setCellValue($col++ . $row, $item['Unit_Cost'] ? '₱' . number_format($item['Unit_Cost'], 2) : '');
-    $sheet3->setCellValue($col++ . $row, $item['total_cost'] ? '₱' . number_format($item['total_cost'], 2) : '');
+    $sheet3->setCellValue($col++ . $row, $item['Unit_Cost'] ? number_format($item['Unit_Cost'], 2) : '');
+    $sheet3->setCellValue($col++ . $row, $item['total_cost'] ? number_format($item['total_cost'], 2) : '');
 
     $row++;
 }
@@ -448,10 +567,12 @@ styleData($sheet3, $dataRange);
 foreach(range('A', chr(65 + count($departments) + 5)) as $columnID) {
     $sheet3->getColumnDimension($columnID)->setAutoSize(true);
 }
+}
 
 // ==========================================
 // SHEET 4: CATEGORY REPORT (All Categories)
 // ==========================================
+if ($type === 'all' || $type === 'category') {
 $sheet4 = $spreadsheet->createSheet();
 $sheet4->setTitle('Category Report');
 
@@ -474,7 +595,7 @@ $sheet4->mergeCells('A5:' . chr(65 + count($departments) + 5) . '5');
 $sheet4->mergeCells('A6:' . chr(65 + count($departments) + 5) . '6');
 
 // Get all categories
-$catStmt = $conn->prepare("SELECT DISTINCT Category_Name FROM tbl_ppmp_categories ORDER BY Category_Name");
+$catStmt = $conn->prepare("SELECT DISTINCT Category FROM tbl_ppmp_bac_items ORDER BY Category");
 $catStmt->execute();
 $categories = $catStmt->fetchAll(PDO::FETCH_COLUMN);
 
@@ -516,11 +637,18 @@ foreach($categories as $category) {
     }
 
     // Get data for this category
+    $whereClause = "WHERE p.Status = 'approved' AND i.Category = ?";
+    $params = [$category];
+    if ($year) {
+        $whereClause .= " AND p.Plan_Year = ?";
+        $params[] = $year;
+    }
+
     $stmt = $conn->prepare("
         SELECT
             i.Item_Code,
             i.Item_Name,
-            i.Item_Description,
+            i.Items_Description AS Item_Description,
             i.Unit,
             i.Unit_Cost,
             p.Department,
@@ -529,11 +657,11 @@ foreach($categories as $category) {
         FROM tbl_ppmp_entries e
         INNER JOIN tbl_ppmp_documents p ON e.PPMP_ID = p.ID
         INNER JOIN tbl_ppmp_bac_items i ON e.Item_ID = i.ID
-        WHERE p.Status = 'approved' AND i.Category = ?
-        GROUP BY i.Item_Code, i.Item_Name, i.Item_Description, i.Unit, i.Unit_Cost, p.Department
+        {$whereClause}
+        GROUP BY i.Item_Code, i.Item_Name, i.Items_Description, i.Unit, i.Unit_Cost, p.Department
         ORDER BY i.Item_Code, p.Department
     ");
-    $stmt->execute([$category]);
+    $stmt->execute($params);
     $catData = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Group by item for this category
@@ -572,8 +700,8 @@ foreach($categories as $category) {
 
         // Totals
         $sheet4->setCellValue($col++ . $row, $item['total_quantity']);
-        $sheet4->setCellValue($col++ . $row, $item['Unit_Cost'] ? '₱' . number_format($item['Unit_Cost'], 2) : '');
-        $sheet4->setCellValue($col++ . $row, $item['total_cost'] ? '₱' . number_format($item['total_cost'], 2) : '');
+        $sheet4->setCellValue($col++ . $row, $item['Unit_Cost'] ? number_format($item['Unit_Cost'], 2) : '');
+        $sheet4->setCellValue($col++ . $row, $item['total_cost'] ? number_format($item['total_cost'], 2) : '');
 
         $row++;
     }
@@ -590,12 +718,14 @@ styleData($sheet4, $dataRange);
 foreach(range('A', chr(65 + count($departments) + 5)) as $columnID) {
     $sheet4->getColumnDimension($columnID)->setAutoSize(true);
 }
+}
 
 // ==========================================
 // SHEET 5: SUMMARY
 // ==========================================
-$sheet5 = $spreadsheet->createSheet();
-$sheet5->setTitle('Summary');
+if ($type === 'all' || $type === 'summary') {
+    $sheet5 = $spreadsheet->createSheet();
+    $sheet5->setTitle('Summary');
 
 // Add header information
 $sheet5->setCellValue('A1', 'Republic of the Philippines');
@@ -633,19 +763,19 @@ $categoryCount = count($categories);
 $row++;
 $sheet5->setCellValue('A' . $row, 'Consolidated Items');
 $sheet5->setCellValue('B' . $row, $totalItems);
-$sheet5->setCellValue('C' . $row, '₱' . number_format($totalValue, 2));
+$sheet5->setCellValue('C' . $row, number_format($totalValue, 2));
 $sheet5->setCellValue('D' . $row, $deptCount);
 
 $row++;
 $sheet5->setCellValue('A' . $row, 'APP Report Items');
 $sheet5->setCellValue('B' . $row, count($appData));
-$sheet5->setCellValue('C' . $row, '₱' . number_format(array_sum(array_column($appData, 'total_cost')), 2));
+$sheet5->setCellValue('C' . $row, number_format(array_sum(array_column($appData, 'total_cost')), 2));
 $sheet5->setCellValue('D' . $row, $deptCount);
 
 $row++;
 $sheet5->setCellValue('A' . $row, 'Department Report Items');
 $sheet5->setCellValue('B' . $row, count($groupedDeptData));
-$sheet5->setCellValue('C' . $row, '₱' . number_format(array_sum(array_column($groupedDeptData, 'total_cost')), 2));
+$sheet5->setCellValue('C' . $row, number_format(array_sum(array_column($groupedDeptData, 'total_cost')), 2));
 $sheet5->setCellValue('D' . $row, $deptCount);
 
 $row++;
@@ -662,9 +792,14 @@ styleData($sheet5, $dataRange);
 foreach(range('A', 'D') as $columnID) {
     $sheet5->getColumnDimension($columnID)->setAutoSize(true);
 }
+}
 
 // Create writer and output
-$writer = new Xlsx($spreadsheet);
+if ($exportType === 'csv') {
+    $writer = new Csv($spreadsheet);
+} else {
+    $writer = new Xlsx($spreadsheet);
+}
 $writer->save('php://output');
 exit();
 ?></content>

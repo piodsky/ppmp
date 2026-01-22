@@ -234,14 +234,14 @@ if ($role === 'admin' || $role === 'staff') {
 
         /* Cost and total columns */
         .table th:nth-child(n+20), .table td:nth-child(n+20) {
-            width: 80px;
-            min-width: 70px;
+            width: 100px;
+            min-width: 80px;
         }
 
         /* Category column */
         .table th:nth-child(23), .table td:nth-child(23) {
-            width: 100px;
-            min-width: 80px;
+            width: auto;
+            min-width: 120px;
         }
 
         /* Actions column */
@@ -1226,17 +1226,12 @@ function loadPPMPDataForView(ppmpId) {
         if (data.success) {
             populatePPMPForm(data.ppmp);
 
-            // After populating, disable all form inputs and buttons for view mode
+            // After populating, only disable save buttons for view mode
             setTimeout(() => {
-                document.querySelectorAll('input, select, textarea, button').forEach(el => {
-                    // Keep pagination buttons and save button enabled
-                    if (el.type !== 'button' || (!el.onclick) ||
-                        (!el.onclick.toString().includes('savePPMP') &&
-                         !el.onclick.toString().includes('changePage') &&
-                         !el.id.includes('prevPage') &&
-                         !el.id.includes('nextPage'))) {
+                // Only disable save-related buttons
+                document.querySelectorAll('button').forEach(el => {
+                    if (el.onclick && el.onclick.toString().includes('savePPMP')) {
                         el.disabled = true;
-                        // Ensure disabled elements maintain proper styling
                         el.style.color = 'var(--text-primary)';
                         el.style.opacity = '1';
                     }
@@ -1276,26 +1271,49 @@ function loadPPMPDataForView(ppmpId) {
                         if (entry) {
                             // Set description from loaded data
                             const descTextarea = row.querySelector('.item-description');
+                            descTextarea.value = itemDescription;
+                            descTextarea.title = itemDescription;
                             const unitInput = row.querySelector('.item-unit');
                             const costInput = row.querySelector('.unit_cost');
                             const dropdown = row.querySelector('.searchable-dropdown');
                             const selectedText = dropdown ? dropdown.querySelector('.selected-text') : null;
 
-                            if (descTextarea) descTextarea.value = entry.Item_Description || entry.item_description || '';
-                            if (unitInput) unitInput.value = entry.Unit || entry.unit || '';
-                            if (costInput) costInput.value = entry.Unit_Cost || entry.unit_cost || 0;
+                            // Use entry data directly
+                            const itemId = entry.Item_ID || entry.item_id;
+                            const itemCode = entry.Item_Code || entry.item_code || '';
+                            const itemName = entry.Item_Name || entry.item_name || '';
+                            const itemDescription = entry.Item_Description || entry.item_description || '';
+                            const unit = entry.Unit || entry.unit || '';
+                            const unitCost = entry.Unit_Cost || entry.unit_cost || 0;
+                            const category = entry.Category || entry.category || '';
+
+                            if (descTextarea) {
+                                descTextarea.value = itemDescription;
+                                descTextarea.title = itemDescription;
+                            }
+                            if (unitInput) unitInput.value = unit;
+                            if (costInput) {
+                                costInput.value = unitCost;
+                                costInput.title = unitCost;
+                            }
+
+                            // Set category
+                            const categoryInput = row.querySelector('.item-category');
+                            if (categoryInput) {
+                                categoryInput.value = category;
+                                categoryInput.title = category;
+                            }
 
                             // Set selected text for dropdown
-                            if (selectedText && entry.item_id) {
-                                const item = itemsList.find(item => parseInt(item.ID) === parseInt(entry.item_id));
-                                if (item) {
-                                    selectedText.textContent = item.Item_Code ? '[' + item.Item_Code + '] ' + item.Items_Description : item.Items_Description;
-                                    // Also set the data attributes for the dropdown
-                                    dropdown.setAttribute('data-selected-item', entry.item_id);
-                                    dropdown.setAttribute('data-code', item.Item_Code || '');
-                                    dropdown.setAttribute('data-name', item.Item_Name || '');
-                                    dropdown.setAttribute('data-category', item.Category || '');
-                                }
+                            if (selectedText && itemId) {
+                                const displayText = itemCode ? '[' + itemCode + '] ' + itemDescription : itemDescription;
+                                selectedText.textContent = displayText;
+                                selectedText.title = displayText;
+                                // Also set the data attributes for the dropdown
+                                dropdown.setAttribute('data-selected-item', itemId);
+                                dropdown.setAttribute('data-code', itemCode);
+                                dropdown.setAttribute('data-name', itemName);
+                                dropdown.setAttribute('data-category', category);
                             }
                         }
                     });
@@ -1316,6 +1334,10 @@ function loadPPMPDataForView(ppmpId) {
 
             // Add view mode attribute to body for CSS styling
             document.body.setAttribute('data-view-mode', 'true');
+
+            // Enable pagination buttons in view mode
+            document.getElementById('prevPage').disabled = false;
+            document.getElementById('nextPage').disabled = false;
         } else {
             alert('Error loading PPMP: ' + data.message);
         }
@@ -1488,7 +1510,9 @@ function populateTableWithPreviewData(previewData) {
         // Get the newly added row and set the quantities and category
         const rows = tableBody.querySelectorAll('tr');
         const lastRow = rows[rows.length - 1];
-        lastRow.querySelector('.item-category').value = item.category;
+        const categoryInput = lastRow.querySelector('.item-category');
+        categoryInput.value = item.category;
+        categoryInput.title = item.category;
 
         // Set quantities
         lastRow.querySelector('.jan').value = item.jan_qty;
@@ -1541,25 +1565,41 @@ function reloadPPMPItems() {
                 const selectedText = dropdown.querySelector('.selected-text');
                 const itemId = entry.Item_ID || entry.item_id;
 
-                // Find the corresponding item in itemsList
-                const item = itemsList.find(item => parseInt(item.ID) === parseInt(itemId));
-                if (item) {
-                    selectedText.textContent = item.Item_Code ? '[' + item.Item_Code + '] ' + item.Items_Description : item.Items_Description;
+                // Use entry data directly instead of looking up in itemsList
+                const itemCode = entry.Item_Code || entry.item_code || '';
+                const itemName = entry.Item_Name || entry.item_name || '';
+                const itemDescription = entry.Item_Description || entry.item_description || '';
+                const unit = entry.Unit || entry.unit || '';
+                const unitCost = entry.Unit_Cost || entry.unit_cost || 0;
+                const category = entry.Category || entry.category || '';
 
-                    // Add to selected items set to prevent duplicates
-                    if (itemId) {
-                        selectedItems.add(parseInt(itemId));
-                        dropdown.setAttribute('data-selected-item', itemId);
-                        dropdown.setAttribute('data-code', item.Item_Code || '');
-                        dropdown.setAttribute('data-name', item.Item_Name || '');
-                        dropdown.setAttribute('data-category', item.Category || '');
-                    }
+                // Set the selected text to show item code and description
+                const displayText = itemCode ? '[' + itemCode + '] ' + itemDescription : itemDescription;
+                selectedText.textContent = displayText;
+                selectedText.title = displayText;
 
-                    // Set the description, unit, and cost fields
-                    lastRow.querySelector('.item-description').value = item.Items_Description || '';
-                    lastRow.querySelector('.item-unit').value = item.Unit || '';
-                    lastRow.querySelector('.unit_cost').value = item.Unit_Cost || 0;
+                // Add to selected items set to prevent duplicates
+                if (itemId) {
+                    selectedItems.add(parseInt(itemId));
+                    dropdown.setAttribute('data-selected-item', itemId);
+                    dropdown.setAttribute('data-code', itemCode);
+                    dropdown.setAttribute('data-name', itemName);
+                    dropdown.setAttribute('data-category', category);
                 }
+
+                // Set the description, unit, and cost fields
+                const descTextarea = lastRow.querySelector('.item-description');
+                descTextarea.value = itemDescription;
+                descTextarea.title = itemDescription;
+                lastRow.querySelector('.item-unit').value = unit;
+                const costInput = lastRow.querySelector('.unit_cost');
+                costInput.value = unitCost;
+                costInput.title = unitCost;
+
+                // Set category
+                const categoryInput = lastRow.querySelector('.item-category');
+                categoryInput.value = category;
+                categoryInput.title = category;
 
                 // Set quantities
                 lastRow.querySelector('.jan').value = Math.max(0, entry.Jan_Qty || entry.jan_qty || 0);

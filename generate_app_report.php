@@ -1,4 +1,4 @@
-111<?php
+<?php
 // Set proper headers for PDF output
 header('Content-Type: application/pdf');
 header('Cache-Control: private, max-age=0, must-revalidate');
@@ -7,29 +7,113 @@ header('Pragma: public');
 // Prevent any HTML output
 ob_start();
 
-require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/../vendor/autoload.php'; // Autoload dependencies
 use Dotenv\Dotenv;
 
 // Load .env variables
 $dotenv = Dotenv::createImmutable(__DIR__ . '/../apiPPMP');
 $dotenv->load();
 
-$host     = $_ENV['DB_HOST'];
-$dbname   = $_ENV['DB_NAME'];
-$username = $_ENV['DB_USER'];
-$password = $_ENV['DB_PASS'];
+require_once '../apiPPMP/config.php';
 
-$conn = new PDO("mysql:host=$host;dbname=$dbname", $username, $password);
-$conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+// Check for token in cookie or Authorization header
+$token = null;
 
-require_once __DIR__ . "/../apiPPMP/token_helper.php";
-TokenHelper::init($conn);
+// First check for token in cookie (secure method)
+if (isset($_COOKIE['auth_token'])) {
+    $token = $_COOKIE['auth_token'];
+}
+// Fallback to Authorization header
+elseif (isset($_SERVER['HTTP_AUTHORIZATION'])) {
+    if (strpos($_SERVER['HTTP_AUTHORIZATION'], 'Bearer ') === 0) {
+        $token = substr($_SERVER['HTTP_AUTHORIZATION'], 7);
+    }
+}
+
+if (!$token) {
+    header("Location: login.php");
+    exit();
+}
+
+// Validate token via API call
+$apiUrl = $_ENV['API_BASE_URL'] . '/api_verify_token.php';
+$context = stream_context_create([
+    'http' => [
+        'method' => 'POST',
+        'header' => [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . $token
+        ],
+        'timeout' => 10
+    ]
+]);
+
+$response = file_get_contents($apiUrl, false, $context);
+if ($response === false) {
+    header("Location: login.php");
+    exit();
+}
+
+$data = json_decode($response, true);
+if (!$data || $data['status'] !== 'success') {
+    header("Location: login.php");
+    exit();
+}
+
+// Set timezone to Asia/Shanghai
+date_default_timezone_set('Asia/Shanghai');
 
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Writer\Csv;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
+
+// Check export type
+$exportType = isset($_GET['export']) ? $_GET['export'] : 'pdf';
+
+// Check if user data is valid
+$user = $data['user'] ?? null;
+if (!$user) {
+    if ($exportType === 'csv') {
+        header('Content-Type: text/plain');
+        echo 'Access Denied: Please log in first';
+        exit();
+    } elseif ($exportType === 'xlsx') {
+        // For XLSX, create error spreadsheet
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="Access_Denied_' . date('Y-m-d_H-i-s') . '.xlsx"');
+        header('Cache-Control: max-age=0');
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setCellValue('A1', 'Access Denied: Please log in first');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit();
+    } else {
+        // Default to PDF
+        header('Content-Type: application/pdf');
+        header('Cache-Control: private, max-age=0, must-revalidate');
+        header('Pragma: public');
+
+        $pdf = new APPPDF('L', 'mm', 'Legal');
+        $pdf->AddPage();
+        $pdf->SetFont('Arial', 'B', 16);
+        $pdf->SetTextColor(255, 0, 0);
+        $pdf->Cell(0, 20, 'Access Denied: Please log in first', 0, 1, 'C');
+        $pdf->Output('Access_Denied.pdf', 'I');
+        exit();
+    }
+}
+
+// Get the year from PPMP documents first
+$yearStmt = $conn->prepare("SELECT DISTINCT Plan_Year FROM tbl_ppmp_documents WHERE Status = 'approved' ORDER BY Plan_Year DESC LIMIT 1");
+$yearStmt->execute();
+$yearResult = $yearStmt->fetch(PDO::FETCH_ASSOC);
+$currentYear = $yearResult ? $yearResult['Plan_Year'] : date('Y');
 
 // Check if FPDF library exists
 $fpdf_path = __DIR__ . "/fpdf186/fpdf.php";
@@ -109,7 +193,7 @@ if (!file_exists($fpdf_path)) {
     exit();
 }
 
-require_once "fpdf186/fpdf.php";
+require_once __DIR__ . "/../system/fpdf186/fpdf.php";
 
 // Extend FPDF class for APP-CSE form
 class APPCSEPDF extends FPDF {
@@ -123,9 +207,9 @@ class APPCSEPDF extends FPDF {
     function Header() {
         if ($this->PageNo() == 1) {
             // Logo on the left
-            $logoPath = __DIR__ . '/image/citylogo.png';
+            $logoPath = __DIR__ . '/../system/image/citylogo.png';
             if (file_exists($logoPath)) {
-                $this->Image('image/citylogo.png', 10, 8, 15);
+                $this->Image('../system/image/citylogo.png', 10, 8, 15);
             }
 
             // Government header
@@ -139,7 +223,7 @@ class APPCSEPDF extends FPDF {
 
             // Logo on the right
             if (file_exists($logoPath)) {
-                $this->Image('image/citylogo.png', 320, 8, 15);
+                $this->Image('../system/image/citylogo.png', 320, 8, 15);
             }
 
             // Main title
@@ -324,18 +408,18 @@ class APPCSEPDF extends FPDF {
 
         $this->SetFont('Arial', '', 7);
         $this->Cell(70, 5, 'A. TOTAL', 1, 0, 'L');
-        $this->Cell(25, 5, 'P' . number_format($totalAmount, 2), 1, 1, 'R');
+        $this->Cell(25, 5, number_format($totalAmount, 2), 1, 1, 'R');
 
         $inflation = $totalAmount * 0.1;
         $this->Cell(70, 5, 'B. ADDITIONAL PROVISION FOR INFLATION (10% of TOTAL)', 1, 0, 'L');
-        $this->Cell(25, 5, 'P' . number_format($inflation, 2), 1, 1, 'R');
+        $this->Cell(25, 5, number_format($inflation, 2), 1, 1, 'R');
 
         $this->Cell(70, 5, 'C. ADDITIONAL PROVISION FOR TRANSPORT AND FREIGHT COST (If Applicable)', 1, 0, 'L');
-        $this->Cell(25, 5, 'P0.00', 1, 1, 'R');
+        $this->Cell(25, 5, '0.00', 1, 1, 'R');
 
         $grandTotal = $totalAmount + $inflation;
         $this->Cell(70, 5, 'D. GRAND TOTAL (A + B + C)', 1, 0, 'L');
-        $this->Cell(25, 5, 'P' . number_format($grandTotal, 2), 1, 1, 'R');
+        $this->Cell(25, 5, number_format($grandTotal, 2), 1, 1, 'R');
 
         $this->Ln(2);
         $this->Cell(70, 5, 'E. APPROVED BUDGET BY THE AGENCY HEAD', 1, 0, 'L');
@@ -366,10 +450,10 @@ class APPCSEPDF extends FPDF {
     }
 }
 
-if (isset($_GET['export']) && $_GET['export'] == 'xlsx') {
+if ($exportType === 'xlsx') {
     // Generate Excel
     header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header('Content-Disposition: attachment;filename="APP_Report_' . date('Y-m-d_H-i-s') . '.xlsx"');
+    header('Content-Disposition: inline;filename="APP_Report_' . date('Y-m-d_H-i-s') . '.xlsx"');
     header('Cache-Control: max-age=0');
 
     $spreadsheet = new Spreadsheet();
@@ -437,10 +521,10 @@ if (isset($_GET['export']) && $_GET['export'] == 'xlsx') {
         SELECT
             i.Item_Code,
             i.Item_Name,
-            i.Item_Description,
+            i.Items_Description AS Item_Description,
             i.Unit,
             i.Unit_Cost,
-            c.Category,
+            i.Category,
             SUM(e.Jan_Qty) as jan_qty,
             SUM(e.Feb_Qty) as feb_qty,
             SUM(e.Mar_Qty) as mar_qty,
@@ -458,10 +542,9 @@ if (isset($_GET['export']) && $_GET['export'] == 'xlsx') {
         FROM tbl_ppmp_entries e
         INNER JOIN tbl_ppmp_documents p ON e.PPMP_ID = p.ID
         INNER JOIN tbl_ppmp_bac_items i ON e.Item_ID = i.ID
-        INNER JOIN tbl_ppmp_categories c ON i.Category = c.Category_Name
         WHERE p.Status = 'approved' AND p.Plan_Year = ?
-        GROUP BY i.Item_Code, i.Item_Name, i.Item_Description, i.Unit, i.Unit_Cost, c.Category
-        ORDER BY c.Category, i.Item_Code
+        GROUP BY i.Item_Code, i.Item_Name, i.Items_Description, i.Unit, i.Unit_Cost, i.Category
+        ORDER BY i.Category, i.Item_Code
     ");
     $stmt->execute([$currentYear]);
     $appData = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -473,11 +556,177 @@ if (isset($_GET['export']) && $_GET['export'] == 'xlsx') {
         // Add category header if category changes
         if ($item['Category'] !== $currentCategory) {
             $currentCategory = $item['Category'];
-            $sheet->setCellValue('A' . $row, $currentCategory);
+            $sheet->setCellValue('A' . $row, strtoupper($currentCategory));
             $sheet->mergeCells('A' . $row . ':Z' . $row);
             $sheet->getStyle('A' . $row . ':Z' . $row)->applyFromArray([
                 'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'E2E8F0']],
-                'font' => ['bold' => true],
+                'font' => ['bold' => true, 'color' => ['rgb' => '0000FF']],
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT]
+            ]);
+            $row++;
+        }
+
+        // Calculate quarterly amounts
+        $q1_qty = $item['jan_qty'] + $item['feb_qty'] + $item['mar_qty'];
+        $q1_amount = $q1_qty * $item['Unit_Cost'];
+        $q2_qty = $item['apr_qty'] + $item['may_qty'] + $item['jun_qty'];
+        $q2_amount = $q2_qty * $item['Unit_Cost'];
+        $q3_qty = $item['jul_qty'] + $item['aug_qty'] + $item['sep_qty'];
+        $q3_amount = $q3_qty * $item['Unit_Cost'];
+        $q4_qty = $item['oct_qty'] + $item['nov_qty'] + $item['dec_qty'];
+        $q4_amount = $q4_qty * $item['Unit_Cost'];
+
+        $sheet->setCellValue('A' . $row, $item['Item_Code'] ?: '');
+        $sheet->setCellValue('B' . $row, $item['Item_Name'] . ' - ' . $item['Item_Description']);
+        $sheet->setCellValue('C' . $row, $item['Unit'] ?: '');
+        $sheet->setCellValue('D' . $row, $item['jan_qty'] ?: 0);
+        $sheet->setCellValue('E' . $row, $item['feb_qty'] ?: 0);
+        $sheet->setCellValue('F' . $row, $item['mar_qty'] ?: 0);
+        $sheet->setCellValue('G' . $row, $q1_qty ?: 0);
+        $sheet->setCellValue('H' . $row, $q1_amount ? number_format($q1_amount, 2) : '0.00');
+        $sheet->setCellValue('I' . $row, $item['apr_qty'] ?: 0);
+        $sheet->setCellValue('J' . $row, $item['may_qty'] ?: 0);
+        $sheet->setCellValue('K' . $row, $item['jun_qty'] ?: 0);
+        $sheet->setCellValue('L' . $row, $q2_qty ?: 0);
+        $sheet->setCellValue('M' . $row, $q2_amount ? number_format($q2_amount, 2) : '0.00');
+        $sheet->setCellValue('N' . $row, $item['jul_qty'] ?: 0);
+        $sheet->setCellValue('O' . $row, $item['aug_qty'] ?: 0);
+        $sheet->setCellValue('P' . $row, $item['sep_qty'] ?: 0);
+        $sheet->setCellValue('Q' . $row, $q3_qty ?: 0);
+        $sheet->setCellValue('R' . $row, $q3_amount ? number_format($q3_amount, 2) : '0.00');
+        $sheet->setCellValue('S' . $row, $item['oct_qty'] ?: 0);
+        $sheet->setCellValue('T' . $row, $item['nov_qty'] ?: 0);
+        $sheet->setCellValue('U' . $row, $item['dec_qty'] ?: 0);
+        $sheet->setCellValue('V' . $row, $q4_qty ?: 0);
+        $sheet->setCellValue('W' . $row, $q4_amount ? number_format($q4_amount, 2) : '0.00');
+        $sheet->setCellValue('X' . $row, $item['total_quantity'] ?: 0);
+        $sheet->setCellValue('Y' . $row, $item['Unit_Cost'] ? number_format($item['Unit_Cost'], 2) : '');
+        $sheet->setCellValue('Z' . $row, $item['total_cost'] ? number_format($item['total_cost'], 2) : '');
+
+        $row++;
+    }
+
+    // Auto-size columns
+    foreach(range('A','Z') as $columnID) {
+        $sheet->getColumnDimension($columnID)->setAutoSize(true);
+    }
+
+    // Create Excel writer and output
+    $writer = new Xlsx($spreadsheet);
+    $writer->save('php://output');
+    exit();
+
+} elseif ($exportType === 'csv') {
+    // Generate CSV
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment;filename="APP_Report_' . date('Y-m-d_H-i-s') . '.csv"');
+    header('Cache-Control: max-age=0');
+
+    $spreadsheet = new Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle('APP Report');
+
+    // Add header information
+    $sheet->setCellValue('A1', 'Republic of the Philippines');
+    $sheet->setCellValue('A2', 'Province of Bukidnon');
+    $sheet->setCellValue('A3', 'City of Malaybalay');
+    $sheet->setCellValue('A5', 'ANNUAL PROCUREMENT PLAN (APP) REPORT');
+    $sheet->setCellValue('A6', 'Generated on: ' . date('F j, Y g:i A'));
+
+    // Style headers
+    $sheet->getStyle('A1:A6')->applyFromArray([
+        'font' => ['bold' => true, 'size' => 12],
+        'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
+    ]);
+    $sheet->mergeCells('A1:Z1');
+    $sheet->mergeCells('A2:Z2');
+    $sheet->mergeCells('A3:Z3');
+    $sheet->mergeCells('A5:Z5');
+    $sheet->mergeCells('A6:Z6');
+
+    // Table headers
+    $row = 8;
+    $sheet->setCellValue('A' . $row, 'Item Code');
+    $sheet->setCellValue('B' . $row, 'Item Name & Specifications');
+    $sheet->setCellValue('C' . $row, 'Unit');
+    $sheet->setCellValue('D' . $row, 'Jan');
+    $sheet->setCellValue('E' . $row, 'Feb');
+    $sheet->setCellValue('F' . $row, 'Mar');
+    $sheet->setCellValue('G' . $row, 'Q1');
+    $sheet->setCellValue('H' . $row, 'Q1 Amount');
+    $sheet->setCellValue('I' . $row, 'Apr');
+    $sheet->setCellValue('J' . $row, 'May');
+    $sheet->setCellValue('K' . $row, 'Jun');
+    $sheet->setCellValue('L' . $row, 'Q2');
+    $sheet->setCellValue('M' . $row, 'Q2 Amount');
+    $sheet->setCellValue('N' . $row, 'Jul');
+    $sheet->setCellValue('O' . $row, 'Aug');
+    $sheet->setCellValue('P' . $row, 'Sep');
+    $sheet->setCellValue('Q' . $row, 'Q3');
+    $sheet->setCellValue('R' . $row, 'Q3 Amount');
+    $sheet->setCellValue('S' . $row, 'Oct');
+    $sheet->setCellValue('T' . $row, 'Nov');
+    $sheet->setCellValue('U' . $row, 'Dec');
+    $sheet->setCellValue('V' . $row, 'Q4');
+    $sheet->setCellValue('W' . $row, 'Q4 Amount');
+    $sheet->setCellValue('X' . $row, 'Total Qty');
+    $sheet->setCellValue('Y' . $row, 'Unit Cost');
+    $sheet->setCellValue('Z' . $row, 'Total Cost');
+
+    // Style header
+    $sheet->getStyle('A' . $row . ':Z' . $row)->applyFromArray([
+        'font' => ['bold' => true, 'size' => 12],
+        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '4A5568']],
+        'font' => ['color' => ['rgb' => 'FFFFFF'], 'bold' => true],
+        'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+        'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]
+    ]);
+
+    // Get data
+    $stmt = $conn->prepare("
+        SELECT
+            i.Item_Code,
+            i.Item_Name,
+            i.Items_Description AS Item_Description,
+            i.Unit,
+            i.Unit_Cost,
+            i.Category,
+            SUM(e.Jan_Qty) as jan_qty,
+            SUM(e.Feb_Qty) as feb_qty,
+            SUM(e.Mar_Qty) as mar_qty,
+            SUM(e.Apr_Qty) as apr_qty,
+            SUM(e.May_Qty) as may_qty,
+            SUM(e.Jun_Qty) as jun_qty,
+            SUM(e.Jul_Qty) as jul_qty,
+            SUM(e.Aug_Qty) as aug_qty,
+            SUM(e.Sep_Qty) as sep_qty,
+            SUM(e.Oct_Qty) as oct_qty,
+            SUM(e.Nov_Qty) as nov_qty,
+            SUM(e.Dec_Qty) as dec_qty,
+            SUM(e.Total_Qty) as total_quantity,
+            SUM(e.Total_Cost) as total_cost
+        FROM tbl_ppmp_entries e
+        INNER JOIN tbl_ppmp_documents p ON e.PPMP_ID = p.ID
+        INNER JOIN tbl_ppmp_bac_items i ON e.Item_ID = i.ID
+        WHERE p.Status = 'approved' AND p.Plan_Year = ?
+        GROUP BY i.Item_Code, i.Item_Name, i.Items_Description, i.Unit, i.Unit_Cost, i.Category
+        ORDER BY i.Category, i.Item_Code
+    ");
+    $stmt->execute([$currentYear]);
+    $appData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Add data rows
+    $row++;
+    $currentCategory = '';
+    foreach($appData as $item) {
+        // Add category header if category changes
+        if ($item['Category'] !== $currentCategory) {
+            $currentCategory = $item['Category'];
+            $sheet->setCellValue('A' . $row, strtoupper($currentCategory));
+            $sheet->mergeCells('A' . $row . ':Z' . $row);
+            $sheet->getStyle('A' . $row . ':Z' . $row)->applyFromArray([
+                'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'E2E8F0']],
+                'font' => ['bold' => true, 'color' => ['rgb' => '0000FF']],
                 'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT]
             ]);
             $row++;
@@ -499,25 +748,25 @@ if (isset($_GET['export']) && $_GET['export'] == 'xlsx') {
         $sheet->setCellValue('E' . $row, $item['feb_qty'] ?: 0);
         $sheet->setCellValue('F' . $row, $item['mar_qty'] ?: 0);
         $sheet->setCellValue('G' . $row, $q1_qty ?: 0);
-        $sheet->setCellValue('H' . $row, $q1_amount ? '₱' . number_format($q1_amount, 2) : '₱0.00');
+        $sheet->setCellValue('H' . $row, $q1_amount ? number_format($q1_amount, 2) : '0.00');
         $sheet->setCellValue('I' . $row, $item['apr_qty'] ?: 0);
         $sheet->setCellValue('J' . $row, $item['may_qty'] ?: 0);
         $sheet->setCellValue('K' . $row, $item['jun_qty'] ?: 0);
         $sheet->setCellValue('L' . $row, $q2_qty ?: 0);
-        $sheet->setCellValue('M' . $row, $q2_amount ? '₱' . number_format($q2_amount, 2) : '₱0.00');
+        $sheet->setCellValue('M' . $row, $q2_amount ? number_format($q2_amount, 2) : '0.00');
         $sheet->setCellValue('N' . $row, $item['jul_qty'] ?: 0);
         $sheet->setCellValue('O' . $row, $item['aug_qty'] ?: 0);
         $sheet->setCellValue('P' . $row, $item['sep_qty'] ?: 0);
         $sheet->setCellValue('Q' . $row, $q3_qty ?: 0);
-        $sheet->setCellValue('R' . $row, $q3_amount ? '₱' . number_format($q3_amount, 2) : '₱0.00');
+        $sheet->setCellValue('R' . $row, $q3_amount ? number_format($q3_amount, 2) : '0.00');
         $sheet->setCellValue('S' . $row, $item['oct_qty'] ?: 0);
         $sheet->setCellValue('T' . $row, $item['nov_qty'] ?: 0);
         $sheet->setCellValue('U' . $row, $item['dec_qty'] ?: 0);
         $sheet->setCellValue('V' . $row, $q4_qty ?: 0);
-        $sheet->setCellValue('W' . $row, $q4_amount ? '₱' . number_format($q4_amount, 2) : '₱0.00');
+        $sheet->setCellValue('W' . $row, $q4_amount ? number_format($q4_amount, 2) : '0.00');
         $sheet->setCellValue('X' . $row, $item['total_quantity'] ?: 0);
-        $sheet->setCellValue('Y' . $row, $item['Unit_Cost'] ? '₱' . number_format($item['Unit_Cost'], 2) : '');
-        $sheet->setCellValue('Z' . $row, $item['total_cost'] ? '₱' . number_format($item['total_cost'], 2) : '');
+        $sheet->setCellValue('Y' . $row, $item['Unit_Cost'] ? number_format($item['Unit_Cost'], 2) : '');
+        $sheet->setCellValue('Z' . $row, $item['total_cost'] ? number_format($item['total_cost'], 2) : '');
 
         $row++;
     }
@@ -534,7 +783,11 @@ if (isset($_GET['export']) && $_GET['export'] == 'xlsx') {
         $sheet->getColumnDimension($columnID)->setAutoSize(true);
     }
 
-    $writer = new Xlsx($spreadsheet);
+    if ($exportType === 'csv') {
+        $writer = new Csv($spreadsheet);
+    } else {
+        $writer = new Xlsx($spreadsheet);
+    }
     $writer->save('php://output');
     exit();
 }
@@ -587,12 +840,6 @@ if (isset(null)) {
 
 // Check if preview mode is requested
 $preview = isset($_GET['preview']) && $_GET['preview'] == '1';
-
-// Get the year from PPMP documents first
-$yearStmt = $conn->prepare("SELECT DISTINCT Plan_Year FROM tbl_ppmp_documents WHERE Status = 'approved' ORDER BY Plan_Year DESC LIMIT 1");
-$yearStmt->execute();
-$yearResult = $yearStmt->fetch(PDO::FETCH_ASSOC);
-$currentYear = $yearResult ? $yearResult['Plan_Year'] : date('Y');
 
 // Check if there are any approved PPMP documents
 $checkStmt = $conn->prepare("SELECT COUNT(*) as count FROM tbl_ppmp_documents WHERE Status = 'approved'");
@@ -737,22 +984,22 @@ try {
                 $item['jan_qty'] > 0 ? $item['jan_qty'] : '',
                 $item['feb_qty'] > 0 ? $item['feb_qty'] : '',
                 $item['mar_qty'] > 0 ? $item['mar_qty'] : '',
-                $q1_amount > 0 ? 'P' . number_format($q1_amount, 2) : '',
+                $q1_amount > 0 ? number_format($q1_amount, 2) : '',
                 $item['apr_qty'] > 0 ? $item['apr_qty'] : '',
                 $item['may_qty'] > 0 ? $item['may_qty'] : '',
                 $item['jun_qty'] > 0 ? $item['jun_qty'] : '',
-                $q2_amount > 0 ? 'P' . number_format($q2_amount, 2) : '',
+                $q2_amount > 0 ? number_format($q2_amount, 2) : '',
                 $item['jul_qty'] > 0 ? $item['jul_qty'] : '',
                 $item['aug_qty'] > 0 ? $item['aug_qty'] : '',
                 $item['sep_qty'] > 0 ? $item['sep_qty'] : '',
-                $q3_amount > 0 ? 'P' . number_format($q3_amount, 2) : '',
+                $q3_amount > 0 ? number_format($q3_amount, 2) : '',
                 $item['oct_qty'] > 0 ? $item['oct_qty'] : '',
                 $item['nov_qty'] > 0 ? $item['nov_qty'] : '',
                 $item['dec_qty'] > 0 ? $item['dec_qty'] : '',
-                $q4_amount > 0 ? 'P' . number_format($q4_amount, 2) : '',
+                $q4_amount > 0 ? number_format($q4_amount, 2) : '',
                 number_format($item['total_quantity']),
-                'P' . number_format($item['Unit_Cost'], 2),
-                'P' . number_format($item['total_cost'], 2)
+                number_format($item['Unit_Cost'], 2),
+                number_format($item['total_cost'], 2)
             );
             $pdf->TableRow($data);
 

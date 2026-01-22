@@ -1,6 +1,57 @@
 <?php
-require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/../vendor/autoload.php'; // Autoload dependencies
 use Dotenv\Dotenv;
+
+// Load .env variables
+$dotenv = Dotenv::createImmutable(__DIR__ . '/../apiPPMP');
+$dotenv->load();
+
+require_once '../apiPPMP/config.php';
+
+// Check for token in cookie or Authorization header
+$token = null;
+
+// First check for token in cookie (secure method)
+if (isset($_COOKIE['auth_token'])) {
+    $token = $_COOKIE['auth_token'];
+}
+// Fallback to Authorization header
+elseif (isset($_SERVER['HTTP_AUTHORIZATION'])) {
+    if (strpos($_SERVER['HTTP_AUTHORIZATION'], 'Bearer ') === 0) {
+        $token = substr($_SERVER['HTTP_AUTHORIZATION'], 7);
+    }
+}
+
+if (!$token) {
+    header("Location: login.php");
+    exit();
+}
+
+// Validate token via API call
+$apiUrl = $_ENV['API_BASE_URL'] . '/api_verify_token.php';
+$context = stream_context_create([
+    'http' => [
+        'method' => 'POST',
+        'header' => [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . $token
+        ],
+        'timeout' => 10
+    ]
+]);
+
+$response = file_get_contents($apiUrl, false, $context);
+if ($response === false) {
+    header("Location: login.php");
+    exit();
+}
+
+$data = json_decode($response, true);
+if (!$data || $data['status'] !== 'success') {
+    header("Location: login.php");
+    exit();
+}
+
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -10,10 +61,46 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 // Check export type
 $exportType = isset($_GET['export']) ? $_GET['export'] : 'pdf';
 
+// Check if user data is valid
+$user = $data['user'] ?? null;
+if (!$user) {
+    if ($exportType === 'csv') {
+        header('Content-Type: text/plain');
+        echo 'Access Denied: Please log in first';
+        exit();
+    } elseif ($exportType === 'xlsx') {
+        // For XLSX, create error spreadsheet
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="Access_Denied_' . date('Y-m-d_H-i-s') . '.xlsx"');
+        header('Cache-Control: max-age=0');
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setCellValue('A1', 'Access Denied: Please log in first');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit();
+    } else {
+        // Default to PDF
+        header('Content-Type: application/pdf');
+        header('Cache-Control: private, max-age=0, must-revalidate');
+        header('Pragma: public');
+
+        $pdf = new ConsolidatedPDF('L', 'mm', 'Legal');
+        $pdf->AddPage();
+        $pdf->SetFont('Arial', 'B', 16);
+        $pdf->SetTextColor(255, 0, 0);
+        $pdf->Cell(0, 20, 'Access Denied: Please log in first', 0, 1, 'C');
+        $pdf->Output('Access_Denied.pdf', 'I');
+        exit();
+    }
+}
+
 // Set headers based on export type
 if ($exportType === 'xlsx') {
     header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header('Content-Disposition: attachment;filename="Consolidated_PPMP_Report_' . date('Y-m-d_H-i-s') . '.xlsx"');
+    header('Content-Disposition: inline;filename="Consolidated_PPMP_Report_' . date('Y-m-d_H-i-s') . '.xlsx"');
     header('Cache-Control: max-age=0');
 } elseif ($exportType === 'csv') {
     header('Content-Type: text/csv');
@@ -28,21 +115,6 @@ if ($exportType === 'xlsx') {
 
 // Prevent any HTML output
 ob_start();
-
-// Load .env variables
-$dotenv = Dotenv::createImmutable(__DIR__ . '/../apiPPMP');
-$dotenv->load();
-
-$host     = $_ENV['DB_HOST'];
-$dbname   = $_ENV['DB_NAME'];
-$username = $_ENV['DB_USER'];
-$password = $_ENV['DB_PASS'];
-
-$conn = new PDO("mysql:host=$host;dbname=$dbname", $username, $password);
-$conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-require_once __DIR__ . "/../apiPPMP/token_helper.php";
-TokenHelper::init($conn);
 
 // Check if FPDF library exists
 $fpdf_path = __DIR__ . "/fpdf186/fpdf.php";
@@ -264,18 +336,6 @@ class ConsolidatedPDF extends FPDF {
     }
 }
 
-// Validate token using TokenHelper
-$user = TokenHelper::getCurrentUser();
-if (!$user) {
-    // For PDF output, don't redirect - show error in PDF
-    $pdf = new ConsolidatedPDF('L', 'mm', 'Legal');
-    $pdf->AddPage();
-    $pdf->SetFont('Arial', 'B', 16);
-    $pdf->SetTextColor(255, 0, 0);
-    $pdf->Cell(0, 20, 'Access Denied: Please log in first', 0, 1, 'C');
-    $pdf->Output('Access_Denied.pdf', 'I');
-    exit();
-}
 
 // Check if preview mode is requested
 $preview = isset($_GET['preview']) && $_GET['preview'] == '1';
@@ -291,6 +351,38 @@ $checkStmt = $conn->prepare("SELECT COUNT(*) as count FROM tbl_ppmp_documents WH
 $checkStmt->execute();
 $checkResult = $checkStmt->fetch(PDO::FETCH_ASSOC);
 $approvedCount = $checkResult['count'];
+
+// Get all departments with approved PPMPs
+$deptStmt = $conn->prepare("
+    SELECT DISTINCT Department
+    FROM tbl_ppmp_documents
+    WHERE Status = 'approved' AND Plan_Year = ?
+    ORDER BY Department
+");
+$deptStmt->execute([$currentYear]);
+$departments = $deptStmt->fetchAll(PDO::FETCH_COLUMN);
+
+// Get consolidated items data (aggregated) for CSV/XLSX export
+$exportStmt = $conn->prepare("
+    SELECT
+        pi.Item_Code,
+        pi.Item_Name,
+        pi.Item_Description,
+        pi.Unit,
+        pi.Unit_Cost,
+        SUM(pi.Jan_Qty + pi.Feb_Qty + pi.Mar_Qty + pi.Apr_Qty + pi.May_Qty + pi.Jun_Qty + pi.Jul_Qty + pi.Aug_Qty + pi.Sep_Qty + pi.Oct_Qty + pi.Nov_Qty + pi.Dec_Qty) as total_quantity,
+        SUM(pi.Total_Cost) as total_cost,
+        GROUP_CONCAT(DISTINCT p.PPMP_Number ORDER BY p.PPMP_Number) as ppmp_numbers,
+        i.Category
+    FROM tbl_ppmp_entries pi
+    JOIN tbl_ppmp_documents p ON pi.PPMP_ID = p.ID
+    JOIN tbl_ppmp_bac_items i ON pi.Item_ID = i.ID
+    WHERE p.Status = 'approved'
+    GROUP BY pi.Item_Code, pi.Item_Name, pi.Item_Description, pi.Unit, pi.Unit_Cost, i.Category
+    ORDER BY i.Category, pi.Item_Name
+");
+$exportStmt->execute();
+$groupedItems = $exportStmt->fetchAll(PDO::FETCH_ASSOC);
 
 $pdf = new ConsolidatedPDF('L', 'mm', 'Legal', $currentYear);
 $pdf->AliasNbPages();
@@ -316,80 +408,70 @@ if ($approvedCount == 0) {
     exit();
 }
 
+if (empty($departments)) {
+    $pdf->SetFont('Arial', 'B', 16);
+    $pdf->SetTextColor(255, 0, 0);
+    $pdf->Cell(0, 20, 'No Departments Found', 0, 1, 'C');
+    $pdf->SetFont('Arial', '', 12);
+    $pdf->SetTextColor(0, 0, 0);
+    $pdf->MultiCell(0, 10, 'No departments with approved PPMP documents found for the selected year.', 0, 'L');
+
+    $filename = 'Consolidated_Report_No_Depts_' . date('Y-m-d_H-i-s') . '.pdf';
+    if ($preview) {
+        $pdf->Output($filename, 'I');
+    } else {
+        $pdf->Output($filename, 'D');
+    }
+    exit();
+}
+
+if (empty($groupedItems)) {
+    $pdf->SetFont('Arial', 'B', 16);
+    $pdf->SetTextColor(255, 0, 0);
+    $pdf->Cell(0, 20, 'No Procurement Items Found', 0, 1, 'C');
+    $pdf->SetFont('Arial', '', 12);
+    $pdf->SetTextColor(0, 0, 0);
+    $pdf->MultiCell(0, 10, 'The approved PPMP documents do not contain any procurement items. Please ensure your PPMP documents have been properly created with items before generating the consolidated report.', 0, 'L');
+    $pdf->Ln(10);
+    $pdf->Cell(0, 10, 'Approved PPMP documents found: ' . $approvedCount, 0, 1, 'L');
+    $pdf->Cell(0, 10, 'Year: ' . $currentYear, 0, 1, 'L');
+
+    $filename = 'Consolidated_Report_No_Items_' . date('Y-m-d_H-i-s') . '.pdf';
+    if ($preview) {
+        $pdf->Output($filename, 'I');
+    } else {
+        $pdf->Output($filename, 'D');
+    }
+    exit();
+}
+
 try {
-    // Get all departments with approved PPMPs
-    $deptStmt = $conn->prepare("
-        SELECT DISTINCT Department
-        FROM tbl_ppmp_documents
-        WHERE Status = 'approved' AND Plan_Year = ?
-        ORDER BY Department
-    ");
-    $deptStmt->execute([$currentYear]);
-    $departments = $deptStmt->fetchAll(PDO::FETCH_COLUMN);
-
-    if (empty($departments)) {
-        $pdf->SetFont('Arial', 'B', 16);
-        $pdf->SetTextColor(255, 0, 0);
-        $pdf->Cell(0, 20, 'No Departments Found', 0, 1, 'C');
-        $pdf->SetFont('Arial', '', 12);
-        $pdf->SetTextColor(0, 0, 0);
-        $pdf->MultiCell(0, 10, 'No departments with approved PPMP documents found for the selected year.', 0, 'L');
-
-        $filename = 'Consolidated_Report_No_Depts_' . date('Y-m-d_H-i-s') . '.pdf';
-        if ($preview) {
-            $pdf->Output($filename, 'I');
-        } else {
-            $pdf->Output($filename, 'D');
-        }
-        exit();
-    }
-
-    // Get consolidated items data by department
-    $stmt = $conn->prepare("
+    // Get raw items data for PDF (with department breakdown)
+    $pdfStmt = $conn->prepare("
         SELECT
-            e.Item_Code,
-            e.Item_Name,
-            e.Item_Description,
-            e.Unit,
-            e.Unit_Cost,
+            pi.Item_Code,
+            pi.Item_Name,
+            pi.Item_Description,
+            pi.Unit,
+            pi.Unit_Cost,
             p.Department,
-            SUM(e.Total_Qty) as total_quantity,
-            SUM(e.Total_Cost) as total_cost
-        FROM tbl_ppmp_entries e
-        INNER JOIN tbl_ppmp_documents p ON e.PPMP_ID = p.ID
-        WHERE p.Status = 'approved' AND p.Plan_Year = ?
-        GROUP BY e.Item_Code, e.Item_Name, e.Item_Description, e.Unit, e.Unit_Cost, p.Department
-        ORDER BY e.Item_Code, e.Item_Name, p.Department
+            SUM(pi.Jan_Qty + pi.Feb_Qty + pi.Mar_Qty + pi.Apr_Qty + pi.May_Qty + pi.Jun_Qty + pi.Jul_Qty + pi.Aug_Qty + pi.Sep_Qty + pi.Oct_Qty + pi.Nov_Qty + pi.Dec_Qty) as total_quantity,
+            SUM(pi.Total_Cost) as total_cost
+        FROM tbl_ppmp_entries pi
+        JOIN tbl_ppmp_documents p ON pi.PPMP_ID = p.ID
+        WHERE p.Status = 'approved'
+        GROUP BY pi.Item_Code, pi.Item_Name, pi.Item_Description, pi.Unit, pi.Unit_Cost, p.Department
+        ORDER BY pi.Item_Code, pi.Item_Name, p.Department
     ");
-    $stmt->execute([$currentYear]);
-    $rawItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $pdfStmt->execute();
+    $rawItems = $pdfStmt->fetchAll(PDO::FETCH_ASSOC);
 
-    if (empty($rawItems)) {
-        $pdf->SetFont('Arial', 'B', 16);
-        $pdf->SetTextColor(255, 0, 0);
-        $pdf->Cell(0, 20, 'No Procurement Items Found', 0, 1, 'C');
-        $pdf->SetFont('Arial', '', 12);
-        $pdf->SetTextColor(0, 0, 0);
-        $pdf->MultiCell(0, 10, 'The approved PPMP documents do not contain any procurement items. Please ensure your PPMP documents have been properly created with items before generating the consolidated report.', 0, 'L');
-        $pdf->Ln(10);
-        $pdf->Cell(0, 10, 'Approved PPMP documents found: ' . $approvedCount, 0, 1, 'L');
-        $pdf->Cell(0, 10, 'Year: ' . $currentYear, 0, 1, 'L');
-
-        $filename = 'Consolidated_Report_No_Items_' . date('Y-m-d_H-i-s') . '.pdf';
-        if ($preview) {
-            $pdf->Output($filename, 'I');
-        } else {
-            $pdf->Output($filename, 'D');
-        }
-        exit();
-    }
-
-    // Group items by Item_Code and Item_Name
-    $groupedItems = [];
+    // Group items by Item_Code and Item_Name for PDF
+    $pdfGroupedItems = [];
     foreach($rawItems as $item) {
         $key = $item['Item_Code'] . '|' . $item['Item_Name'] . '|' . $item['Item_Description'] . '|' . $item['Unit'] . '|' . $item['Unit_Cost'];
-        if (!isset($groupedItems[$key])) {
-            $groupedItems[$key] = [
+        if (!isset($pdfGroupedItems[$key])) {
+            $pdfGroupedItems[$key] = [
                 'Item_Code' => $item['Item_Code'],
                 'Item_Name' => $item['Item_Name'],
                 'Item_Description' => $item['Item_Description'],
@@ -400,16 +482,16 @@ try {
                 'total_cost' => 0
             ];
         }
-        $groupedItems[$key]['departments'][$item['Department']] = $item['total_quantity'];
-        $groupedItems[$key]['total_quantity'] += $item['total_quantity'];
-        $groupedItems[$key]['total_cost'] += $item['total_cost'];
+        $pdfGroupedItems[$key]['departments'][$item['Department']] = $item['total_quantity'];
+        $pdfGroupedItems[$key]['total_quantity'] += $item['total_quantity'];
+        $pdfGroupedItems[$key]['total_cost'] += $item['total_cost'];
     }
 
     // Table header
     $pdf->TableHeader($departments);
 
     // Table data
-    foreach($groupedItems as $item) {
+    foreach($pdfGroupedItems as $item) {
         $data = [
             $item['Item_Code'] ?: '',
             $item['Item_Name'] . ' - ' . $item['Item_Description'],
@@ -475,8 +557,33 @@ try {
 
 // Output based on export type
 if ($exportType === 'xlsx') {
-    // Generate XLSX file
-    generateXLSX($groupedItems, $departments, $currentYear, $approvedCount);
+    // Clear any output buffers before Excel generation
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    try {
+        // Generate XLSX file
+        generateXLSX($groupedItems, $departments, $currentYear, $approvedCount);
+    } catch (Exception $e) {
+        // Clear any output buffers
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+
+        // Create error Excel file
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="Error_' . date('Y-m-d_H-i-s') . '.xlsx"');
+        header('Cache-Control: max-age=0');
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setCellValue('A1', 'Error Generating Excel Report');
+        $sheet->setCellValue('A2', 'Error: ' . $e->getMessage());
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit();
+    }
 } elseif ($exportType === 'csv') {
     // Generate CSV file
     generateCSV($groupedItems, $departments, $currentYear, $approvedCount);
@@ -497,180 +604,72 @@ if ($exportType === 'xlsx') {
 function generateXLSX($groupedItems, $departments, $currentYear, $approvedCount) {
     $spreadsheet = new Spreadsheet();
     $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle('Consolidated Items');
 
-    // Set document properties
-    $spreadsheet->getProperties()
-        ->setCreator('PPMP Management System')
-        ->setTitle('Consolidated PPMP Report')
-        ->setSubject('Consolidated Procurement Items by Department')
-        ->setDescription('Generated consolidated report for approved PPMP documents');
+    // Headers
+    $sheet->setCellValue('A1', 'Item Code');
+    $sheet->setCellValue('B1', 'Item Name');
+    $sheet->setCellValue('C1', 'Description');
+    $sheet->setCellValue('D1', 'Unit');
+    $sheet->setCellValue('E1', 'Unit Cost');
+    $sheet->setCellValue('F1', 'Total Quantity');
+    $sheet->setCellValue('G1', 'Total Cost');
+    $sheet->setCellValue('H1', 'PPMP Numbers');
 
-    // Add header information
-    $sheet->setCellValue('A1', 'Republic of the Philippines');
-    $sheet->setCellValue('A2', 'Province of Bukidnon');
-    $sheet->setCellValue('A3', 'City of Malaybalay');
-    $sheet->setCellValue('A5', 'CONSOLIDATED PPMP ITEMS BY DEPARTMENT');
-    $sheet->setCellValue('A6', $currentYear . ' REPORT');
-
-    // Style headers
-    $headerStyle = [
-        'font' => ['bold' => true, 'size' => 12],
-        'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
-    ];
-    $sheet->getStyle('A1:A6')->applyFromArray($headerStyle);
-
-    // Merge cells for headers
-    $sheet->mergeCells('A1:' . chr(65 + count($departments) + 4) . '1');
-    $sheet->mergeCells('A2:' . chr(65 + count($departments) + 4) . '2');
-    $sheet->mergeCells('A3:' . chr(65 + count($departments) + 4) . '3');
-    $sheet->mergeCells('A5:' . chr(65 + count($departments) + 4) . '5');
-    $sheet->mergeCells('A6:' . chr(65 + count($departments) + 4) . '6');
-
-    // Table headers
-    $row = 8;
-    $col = 'A';
-
-    $sheet->setCellValue($col++ . $row, 'Item Code');
-    $sheet->setCellValue($col++ . $row, 'Item & Specifications');
-    $sheet->setCellValue($col++ . $row, 'Unit');
-
-    // Department columns
-    foreach($departments as $dept) {
-        $sheet->setCellValue($col++ . $row, substr($dept, 0, 15));
-    }
-
-    $sheet->setCellValue($col++ . $row, 'Total Qty');
-    $sheet->setCellValue($col++ . $row, 'Unit Cost');
-    $sheet->setCellValue($col++ . $row, 'Total Cost');
-
-    // Style table header
-    $headerRange = 'A' . $row . ':' . chr(65 + count($departments) + 5) . $row;
-    $sheet->getStyle($headerRange)->applyFromArray([
+    // Style header
+    $sheet->getStyle('A1:H1')->applyFromArray([
         'font' => ['bold' => true],
         'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'CCCCCC']],
-        'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
-        'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]
     ]);
 
-    // Add data rows
-    $row++;
-    foreach($groupedItems as $item) {
-        $col = 'A';
-        $sheet->setCellValue($col++ . $row, $item['Item_Code'] ?: '');
-        $sheet->setCellValue($col++ . $row, $item['Item_Name'] . ' - ' . $item['Item_Description']);
-        $sheet->setCellValue($col++ . $row, $item['Unit'] ?: '');
-
-        // Department quantities
-        foreach($departments as $dept) {
-            $qty = isset($item['departments'][$dept]) ? $item['departments'][$dept] : '';
-            $sheet->setCellValue($col++ . $row, $qty === '' ? '' : $qty);
-        }
-
-        // Totals
-        $sheet->setCellValue($col++ . $row, $item['total_quantity']);
-        $sheet->setCellValue($col++ . $row, $item['Unit_Cost']);
-        $sheet->setCellValue($col++ . $row, $item['total_cost']);
-
+    $row = 2;
+    foreach ($groupedItems as $item) {
+        $sheet->setCellValue('A' . $row, $item['Item_Code']);
+        $sheet->setCellValue('B' . $row, $item['Item_Name']);
+        $sheet->setCellValue('C' . $row, $item['Item_Description']);
+        $sheet->setCellValue('D' . $row, $item['Unit']);
+        $sheet->setCellValue('E' . $row, $item['Unit_Cost']);
+        $sheet->setCellValue('F' . $row, $item['total_quantity']);
+        $sheet->setCellValue('G' . $row, $item['total_cost']);
+        $sheet->setCellValue('H' . $row, $item['ppmp_numbers']);
         $row++;
     }
 
-    // Add summary section
-    $row += 2;
-    $summaryStartRow = $row;
-    $sheet->setCellValue('A' . $row, 'SUMMARY');
-    $sheet->getStyle('A' . $row)->applyFromArray(['font' => ['bold' => true]]);
-
-    $row++;
-    $totalItems = count($groupedItems);
-    $grandTotalCost = array_sum(array_column($groupedItems, 'total_cost'));
-
-    $sheet->setCellValue('A' . $row, 'Total Unique Items:');
-    $sheet->setCellValue('B' . $row, $totalItems);
-    $row++;
-
-    $sheet->setCellValue('A' . $row, 'Grand Total Cost:');
-    $sheet->setCellValue('B' . $row, 'P' . number_format($grandTotalCost, 2));
-    $row++;
-
-    $sheet->setCellValue('A' . $row, 'Approved PPMP Documents:');
-    $sheet->setCellValue('B' . $row, $approvedCount);
-
-    // Style summary
-    $summaryRange = 'A' . $summaryStartRow . ':B' . $row;
-    $sheet->getStyle($summaryRange)->applyFromArray([
-        'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]
-    ]);
-
     // Auto-size columns
-    foreach(range('A', chr(65 + count($departments) + 5)) as $columnID) {
+    foreach(range('A', 'H') as $columnID) {
         $sheet->getColumnDimension($columnID)->setAutoSize(true);
     }
 
-    // Set data rows border
-    $dataRange = 'A9:' . chr(65 + count($departments) + 5) . ($row - 4);
-    $sheet->getStyle($dataRange)->applyFromArray([
-        'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]
-    ]);
-
-    // Create writer and output
     $writer = new Xlsx($spreadsheet);
     $writer->save('php://output');
 }
 
 // Function to generate CSV export
 function generateCSV($groupedItems, $departments, $currentYear, $approvedCount) {
-    // Create CSV header
-    $output = fopen('php://output', 'w');
+    // Output UTF-8 BOM for proper character encoding in Excel
+    echo "\xEF\xBB\xBF";
 
-    // Add header information
-    fputcsv($output, ['Republic of the Philippines']);
-    fputcsv($output, ['Province of Bukidnon']);
-    fputcsv($output, ['City of Malaybalay']);
-    fputcsv($output, []);
-    fputcsv($output, ['CONSOLIDATED PPMP ITEMS BY DEPARTMENT']);
-    fputcsv($output, [$currentYear . ' REPORT']);
-    fputcsv($output, []);
-
-    // Create table headers
-    $headers = ['Item Code', 'Item & Specifications', 'Unit'];
-    foreach($departments as $dept) {
-        $headers[] = substr($dept, 0, 15);
+    // Output CSV headers
+    echo "Item Code,Item Name,Description,Unit,Unit Cost,Total Quantity,Total Cost,PPMP Numbers\n";
+    foreach ($groupedItems as $item) {
+        echo '"' . str_replace('"', '""', $item['Item_Code']) . '",';
+        echo '"' . str_replace('"', '""', $item['Item_Name']) . '",';
+        echo '"' . str_replace('"', '""', $item['Item_Description']) . '",';
+        echo '"' . str_replace('"', '""', $item['Unit']) . '",';
+        echo $item['Unit_Cost'] . ',';
+        echo $item['total_quantity'] . ',';
+        echo $item['total_cost'] . ',';
+        echo '"' . str_replace('"', '""', $item['ppmp_numbers']) . '"' . "\n";
     }
-    $headers[] = 'Total Qty';
-    $headers[] = 'Unit Cost';
-    $headers[] = 'Total Cost';
+}
 
-    fputcsv($output, $headers);
-
-    // Add data rows
-    foreach($groupedItems as $item) {
-        $row = [
-            $item['Item_Code'] ?: '',
-            $item['Item_Name'] . ' - ' . $item['Item_Description'],
-            $item['Unit'] ?: ''
-        ];
-
-        // Department quantities
-        foreach($departments as $dept) {
-            $qty = isset($item['departments'][$dept]) ? $item['departments'][$dept] : '';
-            $row[] = $qty === '' ? '' : $qty;
-        }
-
-        // Totals
-        $row[] = $item['total_quantity'];
-        $row[] = $item['Unit_Cost'];
-        $row[] = $item['total_cost'];
-
-        fputcsv($output, $row);
+// Helper function to convert column number to Excel column name (A, B, C, ..., AA, AB, etc.)
+function getExcelColumnName($columnNumber) {
+    $columnName = '';
+    while ($columnNumber >= 0) {
+        $columnName = chr(65 + ($columnNumber % 26)) . $columnName;
+        $columnNumber = floor($columnNumber / 26) - 1;
     }
-
-    // Add summary
-    fputcsv($output, []);
-    fputcsv($output, ['SUMMARY']);
-    fputcsv($output, ['Total Unique Items:', count($groupedItems)]);
-    fputcsv($output, ['Grand Total Cost:', 'P' . number_format(array_sum(array_column($groupedItems, 'total_cost')), 2)]);
-    fputcsv($output, ['Approved PPMP Documents:', $approvedCount]);
-
-    fclose($output);
+    return $columnName;
 }
 ?>

@@ -211,13 +211,13 @@ function editPPMP(ppmpId) {
         const ppmp = data.ppmp;
         const header = ppmp.header;
 
-        // Check if current user is the creator
+        // Check if current user is the creator or admin
         if (!currentUser || !currentUser.username) {
           showAlert('User session not found. Please log in again.', 'danger');
           return;
         }
 
-        if (header.Created_By !== currentUser.username) {
+        if (header.Created_By !== currentUser.username && currentUser.role !== 'admin') {
           showAlert('You can only edit PPMP documents that you created.', 'warning');
           return;
         }
